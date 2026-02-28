@@ -1,0 +1,185 @@
+/* ELOQSPEECH - ZERO WASTE CSS [cite: 2026-02-10] */
+/* REFACTORED: VIBRANT THEME INJECTION [cite: 2026-02-11] */
+
+:root {
+    /* Palet Warna Global agar konsisten */
+    --primary-grad: linear-gradient(135deg, #4f46e5 0%, #ec4899 100%);
+    --bg-page: #f8fafc;
+    --text-dark: #1e293b;
+    --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    background-color: var(--bg-page);
+    /* Efek titik halus tetap dipertahankan namun lebih artistik */
+    background-image: radial-gradient(#cbd5e1 1.5px, transparent 1.5px);
+    background-size: 24px 24px;
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    color: var(--text-dark);
+}
+
+/* 1. MENGHILANGKAN GAP SISI (FULL FLUSH) [cite: 2026-02-10] */
+.main-wrapper {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 10px !important; /* Sedikit dilonggarkan agar shadow muat */
+    display: flex;
+    flex-direction: column;
+    gap: 12px; /* Jarak disesuaikan untuk visual hierarchy */
+}
+
+/* 2. SLIM NAVIGATION BAR [cite: 2026-02-10] */
+.nav-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.95); /* Glass effect */
+    padding: 10px 15px;
+    border-radius: 16px; /* Lebih bulat */
+    box-shadow: var(--card-shadow);
+    border: 1px solid white;
+}
+
+.nav-logo-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 900;
+    /* Gradient Text pada Logo */
+    background: linear-gradient(90deg, #4f46e5, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 16px;
+}
+
+.logo-icon { height: 28px; width: auto; } /* Ukuran dikunci agar rapi */
+
+/* 3. SLIM HERO BANNER (DIPANGKAS) [cite: 2026-02-10] */
+.hero-card {
+    /* Gradient Aurora (Ungu-Biru-Pink) */
+    background: linear-gradient(120deg, #4f46e5 0%, #8b5cf6 50%, #ec4899 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 20px;
+    box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.3); /* Glowing shadow */
+    width: 100%;
+    
+    /* FIX: Mencegah logo raksasa merusak tampilan */
+    position: relative;
+    overflow: hidden; 
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.hero-greeting { font-size: 10px; font-weight: 700; opacity: 0.9; text-transform: uppercase; letter-spacing: 1px; }
+.hero-name { font-size: 20px; font-weight: 800; margin: 0; text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+/* 4. COMPACT MENU GRID [cite: 2026-02-10] */
+.menu-grid {
+    display: grid;
+    /* Kartu responsif */
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); 
+    gap: 12px;
+    width: 100%;
+}
+
+.menu-card {
+    background: white;
+    padding: 15px;
+    border-radius: 18px; /* Lebih smooth */
+    text-align: center;
+    border: 1px solid transparent; /* Border di-handle JS warna-warni */
+    text-decoration: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+    transition: transform 0.2s;
+}
+
+.menu-card:active { transform: scale(0.96); }
+
+/* Class warna ini tetap disimpan untuk fallback */
+.bg-blue { background-color: #eff6ff; color: #2563eb; }
+.bg-green { background-color: #f0fdf4; color: #16a34a; }
+.bg-orange { background-color: #fff7ed; color: #ea580c; }
+.bg-purple { background-color: #f5f3ff; color: #7c3aed; }
+
+.menu-label { font-weight: 700; font-size: 13px; color: #1e293b; line-height: 1.3; margin-top: 5px;}
+.menu-sub { font-size: 10px; font-weight: 600; color: #64748b; margin-top: 2px; text-transform: uppercase; }
+
+/* 5. DENSE DATA TABLE (MAKSIMAL) [cite: 2026-02-10] */
+.mgmt-card {
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #f1f5f9;
+    width: 100% !important;
+    overflow: hidden;
+    box-shadow: var(--card-shadow);
+}
+
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+th { background: #f8fafc; padding: 12px; text-align: left; font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700; border-bottom: 2px solid #e2e8f0; }
+td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
+
+/* Compact Buttons [cite: 2026-02-10] */
+/* REFACTOR: Ubah jadi Pill Shape & Gradient */
+
+.btn-exit {
+    background: #fff1f2; /* Soft Red/Pink */
+    color: #db2777;
+    border: 1px solid #fbcfe8;
+    padding: 6px 16px;
+    border-radius: 50px; /* Pill Shape */
+    font-weight: 800;
+    font-size: 10px;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: var(--primary-grad); /* Gradient Logo */
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 50px; /* Pill Shape */
+    font-weight: 800;
+    width: 100%;
+    font-size: 12px;
+    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3); /* Glow */
+    cursor: pointer;
+}
+.btn-primary:active { transform: scale(0.98); }
+
+/* Modal UI [cite: 2026-02-10] */
+.modal-overlay { 
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+    background: rgba(15, 23, 42, 0.6); /* Lebih gelap & elegan */
+    backdrop-filter: blur(4px); 
+    display: flex; align-items: center; justify-content: center; 
+    z-index: 9999; padding: 15px; 
+}
+.modal-card { 
+    background: white; width: 100%; max-width: 400px; 
+    border-radius: 24px; 
+    padding: 24px; 
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); 
+}
+.f-input, .f-select { 
+    width: 100%; padding: 12px; 
+    border: 2px solid #e2e8f0; 
+    border-radius: 12px; 
+    margin-bottom: 15px; 
+    font-size: 14px; 
+    background: #f8fafc;
+}
+.f-input:focus, .f-select:focus {
+    outline: none;
+    border-color: #4f46e5;
+    background: white;
+}
