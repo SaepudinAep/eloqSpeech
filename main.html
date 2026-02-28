@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dashboard | EloqSpeech</title>
+    
+    <link rel="stylesheet" href="assets/css/main.css">
+    
+    <style>
+        body, html { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            background-color: #f8fafd; 
+        }
+        #app { 
+            padding: 5px;
+            display: flex;
+            justify-content: center;
+        }
+        /* Overlay Loading agar transisi terasa halus */
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #f8fafd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading-screen" class="loading-overlay">
+        <div style="color: #4d97ff; font-weight: bold;">Memvalidasi Sesi...</div>
+    </div>
+
+    <div id="app">
+<div id="dashboard-content" style="width: 100%;"></div>
+    </div>
+
+    <script type="module" src="assets/js/main.js"></script>
+
+</body>
+</html>
