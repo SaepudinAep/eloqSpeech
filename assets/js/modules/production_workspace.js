@@ -1,9 +1,9 @@
-// production_workspace.js - V41 (AUTO-CLEANER EDITION)
-// Rule: STRICT REFACTORING ONLY.
+// production_workspace.js - V42 (TRUE DB-DRIVEN SCHEMA + AUTO-CLEANER)
+// Rule: STRICT REFACTORING ONLY. SCHEMA_MAP REMOVED.
 // Fixes: 
-// 1. Full DB + Physical Storage Deletion logic.
-// 2. Restored window bindings for bulk/delete buttons.
-// 3. Crash-proof toTitleCase & Schema category 'name' alignment.
+// 1. Dynamic metadata rendering based on es_game_categories.metadata_schema.
+// 2. Full DB + Physical Storage Deletion logic preserved.
+// 3. Restored window bindings for bulk/delete buttons.
 
 import { supabase } from '../config.js';
 
@@ -11,16 +11,6 @@ let quarantineItems = [];
 let masterCategories = [];
 let dbModels = [];
 let selectedIds = new Set();
-
-const SCHEMA_MAP = {
-    "Buah": ["Warna", "Rasa", "Tekstur"],
-    "Kendaraan": ["Tipe", "Jumlah Roda"],
-    "Hewan": ["Habitat", "Makanan", "Suara"],
-    "Emosi": ["Ekspresi", "Intensitas"],
-    "Default": ["Warna", "Sifat"]
-};
-
-const getFields = (catName) => SCHEMA_MAP[catName] || SCHEMA_MAP["Default"];
 
 const toTitleCase = (str) => {
     if (!str) return '';
@@ -38,9 +28,9 @@ const ICONS = {
 };
 
 const injectStyles = () => {
-    if (document.getElementById('pw-v41-styles')) return;
+    if (document.getElementById('pw-v42-styles')) return;
     const s = document.createElement('style');
-    s.id = 'pw-v41-styles';
+    s.id = 'pw-v42-styles';
     s.innerHTML = `
         :root { --p: #4f46e5; --s: #10b981; --d: #ef4444; --slate: #64748b; }
         .pw-app { font-family: sans-serif; background: #fff; padding-bottom: 120px; }
@@ -84,7 +74,7 @@ export async function renderProductionWorkspace(containerId) {
         <div class="pw-app">
             <div class="pw-nav">
                 <div style="display:flex; gap:15px; align-items:center;">
-                    <h2 style="margin:0; font-size:20px;">Warehouse V41 (Auto-Cleaner)</h2>
+                    <h2 style="margin:0; font-size:20px;">Warehouse V42 (DB-Driven)</h2>
                     <select id="m-sel" class="input-v36" style="width:180px;">
                         ${dbModels.map(m => `<option value="${m.model_id}">${m.model_name}</option>`).join('')}
                     </select>
@@ -105,7 +95,6 @@ export async function renderProductionWorkspace(containerId) {
         </div>
     `;
 
-    // PENGKAITAN SEMUA FUNGSI (Sudah diperbaiki 100%)
     window.fetchQueue = fetchQueue;
     window.handleUpload = handleUpload;
     window.triggerAI = triggerAI;
@@ -132,6 +121,7 @@ export async function renderProductionWorkspace(containerId) {
         } else {
             el.classList.add('input-err');
             el.classList.remove('input-ok');
+            window.updateMeta(el.id.replace('c-', ''), ''); // Kosongkan meta jika kategori salah
         }
     };
 
@@ -143,8 +133,14 @@ export async function renderProductionWorkspace(containerId) {
 }
 
 async function fetchContext() {
-    const { data: c } = await supabase.from('es_game_categories').select('id, name').order('name');
-    masterCategories = c || [];
+    const { data: c } = await supabase.from('es_game_categories').select('id, name, metadata_schema').order('name');
+    masterCategories = (c || []).map(cat => {
+        let schemaFields = [];
+        if (cat.metadata_schema) {
+            schemaFields = Array.isArray(cat.metadata_schema) ? cat.metadata_schema : (cat.metadata_schema.fields || []);
+        }
+        return { ...cat, schemaFields };
+    });
     
     const { data: m } = await supabase.from('es_ai_models').select('model_id, model_name').eq('is_active', true);
     dbModels = m || [];
@@ -213,18 +209,20 @@ function renderRows() {
 
 function renderMetaR2(id, catName, data = {}) {
     let targetKeys = [];
-    if (data && Object.keys(data).length > 0) {
+    const cat = masterCategories.find(c => c.name.toLowerCase() === (catName || '').trim().toLowerCase());
+    
+    if (cat && cat.schemaFields.length > 0) {
+        targetKeys = cat.schemaFields.map(f => f.key || f);
+    } else if (data && Object.keys(data).length > 0) {
         targetKeys = Object.keys(data).filter(k => k.toLowerCase() !== 'deskripsi');
-    } else {
-        targetKeys = getFields(catName);
     }
     
-    if (targetKeys.length === 0) return `<span style="font-size:12px; color:var(--slate);">Belum ada metadata.</span>`;
+    if (targetKeys.length === 0) return `<span style="font-size:12px; color:var(--slate);">Pilih kategori valid untuk memuat skema metadata.</span>`;
 
-    return targetKeys.map((label, idx) => `
+    return targetKeys.map((keyStr, idx) => `
         <input id="meta-${id}-${idx}" class="input-v36" style="flex:1; min-width:100px; font-size:13px; background:#fcfdfe;" 
-        data-label="${label}" placeholder="${toTitleCase(label)}" 
-        value="${toTitleCase(data ? (data[label.toLowerCase()] || data[label] || '') : '')}"
+        data-label="${keyStr}" placeholder="${toTitleCase(keyStr.replace(/_/g, ' '))}" 
+        value="${toTitleCase(data ? (data[keyStr.toLowerCase()] || data[keyStr] || '') : '')}"
         onblur="window.cleanInput(this)">
     `).join('');
 }
@@ -335,29 +333,24 @@ async function bulkApprove() {
     selectedIds.clear(); fetchQueue();
 }
 
-// LOGIKA BARU 1: Hapus Massal (Storage + Database)
 async function bulkDelete() {
     if(!confirm("HAPUS PERMANEN: Aset yang dipilih akan dihapus dari Database dan Storage. Lanjutkan?")) return;
     
     try {
-        // Kumpulkan semua file path dari item yang dicentang
         const filesToRemove = [];
         for (const id of selectedIds) {
             const item = quarantineItems.find(x => x.id === id);
             if (item && item.file_path) filesToRemove.push(item.file_path);
         }
 
-        // 1. Eksekusi Hapus Fisik di Storage (Bucket)
         if (filesToRemove.length > 0) {
             await supabase.storage.from('general').remove(filesToRemove);
         }
 
-        // 2. Eksekusi Hapus di Database
         for (const id of selectedIds) { 
             await supabase.from('es_quarantine_assets').delete().eq('id', id); 
         }
 
-        // 3. Bersihkan UI
         selectedIds.clear(); 
         fetchQueue();
     } catch (e) {
@@ -365,22 +358,18 @@ async function bulkDelete() {
     }
 }
 
-// LOGIKA BARU 2: Hapus Satuan (Storage + Database)
 async function deleteOne(id) {
     if(!confirm("HAPUS PERMANEN: Aset ini akan dihapus dari Database dan Storage. Lanjutkan?")) return;
     
     try {
         const item = quarantineItems.find(x => x.id === id);
         
-        // 1. Eksekusi Hapus Fisik di Storage
         if (item && item.file_path) {
             await supabase.storage.from('general').remove([item.file_path]);
         }
         
-        // 2. Eksekusi Hapus di Database
         await supabase.from('es_quarantine_assets').delete().eq('id', id);
         
-        // 3. Bersihkan UI
         const rowEl = document.getElementById(`row-${id}`);
         if(rowEl) rowEl.remove();
         quarantineItems = quarantineItems.filter(x => x.id !== id);
