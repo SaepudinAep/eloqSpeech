@@ -1,4 +1,4 @@
-// spelling_game.js - V11 UNCLEANED (FULL SPA EXIT, CHART REPORT, TEXT-ONLY BTNS, ANTI-SQUISH)
+// spelling_game.js - V11.1 (LEVEL 1 SHUFFLE ADDED)
 import { supabase } from '../config.js';
 
 let state = {
@@ -552,8 +552,17 @@ function submitSetup() {
     // Buat kepingan huruf (Pool)
     let charsForPool = val.replace(/\s/g, '').split('');
     let distCount = state.level === 2 ? 3 : (state.level === 3 ? 6 : 0);
+    
+    // Jika ada level pengecoh, tambahkan huruf acak
     for(let i=0; i<distCount; i++) {
         charsForPool.push(ALPHABET[Math.floor(Math.random() * 26)]);
+    }
+    
+    // PENGACAKAN: Shuffle array charsForPool menggunakan algoritma Fisher-Yates
+    // Ini memastikan huruf di Level 1 (maupun level lainnya) benar-benar teracak sebelum dimasukkan ke items
+    for (let i = charsForPool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [charsForPool[i], charsForPool[j]] = [charsForPool[j], charsForPool[i]];
     }
     
     // Inisialisasi Item dengan Warna Acak
@@ -567,7 +576,7 @@ function submitSetup() {
         };
     });
     
-    // Acak urutan di keranjang
+    // Acak ulang urutan di keranjang untuk keamanan ganda
     state.items.sort(() => Math.random() - 0.5);
     
     window.splCloseModal();

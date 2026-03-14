@@ -4,6 +4,7 @@
 // 1. Dynamic metadata rendering based on es_game_categories.metadata_schema.
 // 2. Full DB + Physical Storage Deletion logic preserved.
 // 3. Restored window bindings for bulk/delete buttons.
+// 4. Added Image-Only Filter on fetchQueue and File Input.
 
 import { supabase } from '../config.js';
 
@@ -83,7 +84,7 @@ export async function renderProductionWorkspace(containerId) {
                     <button class="btn-act" style="background:var(--p); color:white; padding:0 25px; font-weight:700;" onclick="window.triggerAllAI()">✨ BATCH AI</button>
                     <button class="btn-act" style="background:#fff; border:1px solid #cbd5e1; padding:0 20px;" onclick="document.getElementById('f-up').click()">+ UPLOAD</button>
                     <button class="btn-act" style="background:#fff; border:1px solid #cbd5e1;" onclick="window.fetchQueue()">${ICONS.REFRESH}</button>
-                    <input type="file" id="f-up" hidden multiple onchange="window.handleUpload(this.files)">
+                    <input type="file" id="f-up" hidden multiple accept="image/*" onchange="window.handleUpload(this.files)">
                 </div>
             </div>
             <table class="pw-table"><tbody id="q-body"></tbody></table>
@@ -147,7 +148,7 @@ async function fetchContext() {
 }
 
 async function fetchQueue() {
-    const { data } = await supabase.from('es_quarantine_assets').select('*').eq('status', 'PENDING').order('created_at', { ascending: false });
+    const { data } = await supabase.from('es_quarantine_assets').select('*').eq('status', 'PENDING').eq('media_type', 'IMAGE').order('created_at', { ascending: false });
     quarantineItems = data || [];
     renderRows();
 }

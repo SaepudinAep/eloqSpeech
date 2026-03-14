@@ -1,17 +1,18 @@
-// audio_production.js - V1.4 (BULK QUEUE & DUAL DATALIST EDITION)
+// audio_production.js - V1.5 (BULK QUEUE, DUAL DATALIST & QUARANTINE EDITION)
 // Rule: STRICT ENRICHMENT. NO CLEANING. NO SYNTAX COLOR.
-// Features: Bulk Upload Queue System, Dual Datalist (Items & Categories), State Persistence.
+// Features: Bulk Upload Queue System, Dual Datalist (Items & Categories), State Persistence, Audio Quarantine Dashboard.
 
 import { supabase } from '../config.js';
 
 let appState = {
-    view: 'RECORD', // RECORD, UPLOAD, OPTIMIZE
+    view: 'RECORD', // RECORD, UPLOAD, OPTIMIZE, QUARANTINE
     rawBlob: null,
     optimizedBlob: null,
     categories: [],
     items: [],
     queue: [], // Untuk Bulk Upload
-    initialQueueSize: 0
+    initialQueueSize: 0,
+    quarantineList: [] // Enrichment: State untuk Karantina
 };
 
 let mediaRecorder;
@@ -27,7 +28,9 @@ const ICONS = {
     MIC: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>`,
     STOP: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>`,
     UPLOAD: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
-    SEND: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`
+    SEND: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+    CHECK: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
+    TRASH: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`
 };
 
 const injectStyles = () => {
@@ -36,9 +39,9 @@ const injectStyles = () => {
     s.id = 'ap-styles';
     s.innerHTML = `
         .ap-app { --p: #4f46e5; --s: #10b981; --d: #ef4444; --slate: #64748b; font-family: sans-serif; background: #f8fafc; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; box-sizing: border-box; }
-        .ap-card { background: #fff; width: 100%; max-width: 600px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); overflow: hidden; border: 1px solid #e2e8f0; }
+        .ap-card { background: #fff; width: 100%; max-width: 800px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); overflow: hidden; border: 1px solid #e2e8f0; }
         .ap-nav { display: flex; border-bottom: 1px solid #e2e8f0; background: #fff; }
-        .ap-tab { flex: 1; text-align: center; padding: 15px; font-weight: 700; cursor: pointer; color: var(--slate); border-bottom: 3px solid transparent; transition: 0.2s; }
+        .ap-tab { flex: 1; text-align: center; padding: 15px; font-weight: 700; cursor: pointer; color: var(--slate); border-bottom: 3px solid transparent; transition: 0.2s; font-size: 13px; }
         .ap-tab.active { color: var(--p); border-bottom-color: var(--p); background: #fefeff; }
         .ap-tab.disabled { opacity: 0.4; pointer-events: none; cursor: not-allowed; }
         .ap-body { padding: 30px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
@@ -62,6 +65,18 @@ const injectStyles = () => {
         
         canvas { width: 100%; height: 60px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
         @keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+
+        /* Enrichment: Karantina Styles */
+        .qa-list { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+        .qa-item { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; gap: 10px; flex-wrap: wrap;}
+        .qa-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+        .qa-title { font-weight: 800; font-size: 14px; color: #1e293b; text-transform: uppercase; }
+        .qa-meta { font-size: 12px; color: var(--slate); }
+        .qa-player { border-radius: 4px; height: 35px; width: 200px; outline: none; }
+        .qa-actions { display: flex; gap: 8px; }
+        .btn-icon { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 12px; gap: 5px;}
+        .btn-approve { background: var(--s); }
+        .btn-reject { background: var(--d); }
     `;
     document.head.appendChild(s);
 };
@@ -73,13 +88,25 @@ export async function renderAudioProduction(containerId) {
 
     await fetchCategoriesAndItems();
     
-    window.switchView = (view) => { appState.view = view; renderUI(container); };
+    window.switchView = (view) => { 
+        appState.view = view; 
+        if (view === 'QUARANTINE') {
+            loadQuarantineAudios(container);
+        } else {
+            renderUI(container); 
+        }
+    };
+    
     window.startRecording = startRecording;
     window.stopRecording = stopRecording;
     window.handleFileSelect = handleFileSelect;
     window.sendToQuarantine = sendToQuarantine;
     window.formatBytes = formatBytes;
     window.discardRecording = discardRecording;
+    
+    // Enrichment: Register fungsi karantina
+    window.approveAudio = approveAudio;
+    window.rejectAudio = rejectAudio;
     
     renderUI(container);
 }
@@ -95,6 +122,56 @@ async function fetchCategoriesAndItems() {
     appState.items = Array.from(uniqueItems);
 }
 
+// Enrichment: Fetch data Karantina khusus AUDIO
+async function loadQuarantineAudios(container) {
+    const { data, error } = await supabase
+        .from('es_quarantine_assets')
+        .select('*')
+        .eq('media_type', 'AUDIO')
+        .eq('status', 'PENDING')
+        .order('created_at', { ascending: false });
+        
+    if (data) {
+        appState.quarantineList = data;
+    }
+    renderUI(container);
+}
+
+// Enrichment: Approve & pindahkan ke es_game_audios
+async function approveAudio(id) {
+    if (!confirm('Approve audio ini dan masukkan ke Live Data?')) return;
+    const asset = appState.quarantineList.find(a => a.id === id);
+    if (!asset) return;
+
+    try {
+        const { error: insErr } = await supabase.from('es_game_audios').insert({
+            file_path: asset.file_path,
+            public_url: asset.public_url,
+            file_size_kb: asset.file_size_kb,
+            created_by: asset.contributor_id
+            // Data logic (category_id, item_id, dll) akan diisi dari modul Management V2
+        });
+
+        if (insErr) throw insErr;
+
+        await supabase.from('es_quarantine_assets').update({ status: 'APPROVED' }).eq('id', id);
+        loadQuarantineAudios(document.querySelector('.ap-app').parentNode);
+    } catch (e) {
+        alert("Gagal Approve: " + e.message);
+    }
+}
+
+// Enrichment: Reject audio
+async function rejectAudio(id) {
+    if (!confirm('Tolak dan hapus data audio ini?')) return;
+    try {
+        await supabase.from('es_quarantine_assets').update({ status: 'REJECTED' }).eq('id', id);
+        loadQuarantineAudios(document.querySelector('.ap-app').parentNode);
+    } catch (e) {
+        alert("Gagal Reject: " + e.message);
+    }
+}
+
 function renderUI(container) {
     let bodyHtml = '';
     const canOptimize = appState.optimizedBlob !== null;
@@ -102,7 +179,7 @@ function renderUI(container) {
 
     if (appState.initialQueueSize > 0) {
         const currentFileNum = appState.initialQueueSize - appState.queue.length;
-        queueHtml = `<div class="queue-alert">📦 MODE BULK UPLOAD: Memproses File ${currentFileNum} dari ${appState.initialQueueSize}</div>`;
+        queueHtml = `<div class="queue-alert"> MODE BULK UPLOAD: Memproses File ${currentFileNum} dari ${appState.initialQueueSize}</div>`;
     }
     
     if (appState.view === 'RECORD') {
@@ -111,7 +188,7 @@ function renderUI(container) {
             <button id="btn-rec" class="btn-record" onclick="window.startRecording()">${ICONS.MIC}</button>
             <canvas id="visualizer"></canvas>
             <div id="rec-status" style="font-weight:700; color:#1e293b;">Siap Merekam</div>
-            ${canOptimize ? `<div style="color:var(--s); font-size:12px; font-weight:700;">✓ Ada rekaman tersimpan di tab Optimize</div>` : ''}
+            ${canOptimize ? `<div style="color:var(--s); font-size:12px; font-weight:700;"> Ada rekaman tersimpan di tab Optimize</div>` : ''}
         `;
     } else if (appState.view === 'UPLOAD') {
         bodyHtml = `
@@ -159,18 +236,45 @@ function renderUI(container) {
                 ${ICONS.SEND} SEND TO QUARANTINE
             </button>
             <button class="btn-act" style="background:#fef2f2; color:var(--d);" onclick="window.discardRecording()">
-                ${appState.queue.length > 0 ? '🗑️ BUANG & LANJUT ANTRIAN' : '🗑️ BUANG REKAMAN'}
+                ${appState.queue.length > 0 ? ' BUANG & LANJUT ANTRIAN' : ' BUANG REKAMAN'}
             </button>
         `;
+    } else if (appState.view === 'QUARANTINE') {
+        // Enrichment: Render UI Karantina
+        if (appState.quarantineList.length === 0) {
+            bodyHtml = `<div style="padding:40px; color:var(--slate); text-align:center; font-weight:700;">Antrean Karantina Audio Kosong.</div>`;
+        } else {
+            const listHtml = appState.quarantineList.map(item => `
+                <div class="qa-item">
+                    <div class="qa-info">
+                        <div class="qa-title">${item.proposed_item_name || 'Tanpa Nama'}</div>
+                        <div class="qa-meta">Kat: ${item.proposed_category || '-'}</div>
+                    </div>
+                    <audio class="qa-player" controls src="${item.public_url}"></audio>
+                    <div class="qa-actions">
+                        <button class="btn-icon btn-approve" onclick="window.approveAudio('${item.id}')">${ICONS.CHECK} OK</button>
+                        <button class="btn-icon btn-reject" onclick="window.rejectAudio('${item.id}')">${ICONS.TRASH}</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            bodyHtml = `
+                <div style="width:100%; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <div style="font-weight:800; color:var(--p);">TOTAL ANTREAN: ${appState.quarantineList.length}</div>
+                </div>
+                <div class="qa-list">${listHtml}</div>
+            `;
+        }
     }
 
     container.innerHTML = `
         <div class="ap-app">
             <div class="ap-card">
                 <div class="ap-nav">
-                    <div class="ap-tab ${appState.view === 'RECORD' ? 'active' : ''}" onclick="window.switchView('RECORD')">🎙️ RECORDER</div>
-                    <div class="ap-tab ${appState.view === 'UPLOAD' ? 'active' : ''}" onclick="window.switchView('UPLOAD')">📂 UPLOAD</div>
-                    <div class="ap-tab ${appState.view === 'OPTIMIZE' ? 'active' : ''} ${!canOptimize ? 'disabled' : ''}" onclick="${canOptimize ? "window.switchView('OPTIMIZE')" : ""}">⚙️ OPTIMIZE</div>
+                    <div class="ap-tab ${appState.view === 'RECORD' ? 'active' : ''}" onclick="window.switchView('RECORD')"> RECORDER</div>
+                    <div class="ap-tab ${appState.view === 'UPLOAD' ? 'active' : ''}" onclick="window.switchView('UPLOAD')"> UPLOAD</div>
+                    <div class="ap-tab ${appState.view === 'OPTIMIZE' ? 'active' : ''} ${!canOptimize ? 'disabled' : ''}" onclick="${canOptimize ? "window.switchView('OPTIMIZE')" : ""}"> OPTIMIZE</div>
+                    <div class="ap-tab ${appState.view === 'QUARANTINE' ? 'active' : ''}" onclick="window.switchView('QUARANTINE')"> QUARANTINE</div>
                 </div>
                 <div class="ap-body">${bodyHtml}</div>
             </div>
@@ -207,7 +311,7 @@ async function processNextInQueue() {
     
     container.innerHTML = `
         <div style="padding:40px; font-weight:700; color:var(--p); text-align:center;">
-            ⚙️ Processing Engine: Trim & Normalize...<br>
+             Processing Engine: Trim & Normalize...<br>
             <span style="font-size:12px; color:var(--slate);">File ${currentNum} dari ${appState.initialQueueSize} : ${file.name}</span>
         </div>`;
     
@@ -457,7 +561,7 @@ async function sendToQuarantine() {
         return alert("Nama dan Usulan Kategori wajib diisi!");
     }
     
-    btn.innerHTML = '⏳ MENGIRIM...'; 
+    btn.innerHTML = ' MENGIRIM...'; 
     btn.disabled = true;
 
     try {
