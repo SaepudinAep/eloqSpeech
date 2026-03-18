@@ -1,6 +1,7 @@
-// [ COPY BUTTON - ELOQ DASHBOARD MODULE V6 (HOLISTIC OVERALL & AUTO-DETECT) ]
-// Fitur Baru: Auto-Load Active Patient, Default View 'OVERALL', 
-// Radar Chart Domain Klinis, Diet Terapi, Tren Kemandirian Global.
+// [ COPY BUTTON - ELOQ DASHBOARD MODULE V6.1 (EXECUTIVE CLINICAL VIEW) ]
+// Fitur Baru: Impulsivity Chart (Jitter vs Latency), Global S.O.A.P Timeline, 
+// Radar Domain Mapping, Auto-Detect Patient.
+// Rule: FULL CODE, NO SYNTAX COLOR.
 
 import { supabase } from '../config.js';
 
@@ -14,9 +15,9 @@ let DashboardState = {
 
 // Domain Mapping untuk Radar Chart
 const DOMAIN_MAP = {
-    'touch_engine': 'Motorik',
+    'motoric_touch_engine': 'Motorik',
     'receptive_engine': 'Kognitif',
-    'puzzle_engine': 'Kognitif',
+    'visual_puzzle_engine': 'Kognitif',
     'visual_matching_engine': 'Kognitif',
     'memory_card_engine': 'Memori',
     'sequence_engine': 'Memori',
@@ -54,12 +55,10 @@ export function renderDashboard(containerId, activePatient) {
             
             .panel-content { padding: 20px; overflow-y: auto; flex-grow: 1; background: #f1f5f9; }
             
-            /* Form Filter */
             .dash-filter-box { padding: 15px 20px; border-bottom: 1px solid #e2e8f0; background: white; flex-shrink: 0; }
             .dash-input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; margin-bottom: 8px; outline: none; font-size: 12px; background: #f8fafc; transition: 0.2s; }
             .dash-input:focus { border-color: #4d97ff; background: white; }
             
-            /* Checkbox Item Style */
             .chk-item { padding: 12px 14px; background: white; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: 0.2s; }
             .chk-item:hover { border-color: #bfdbfe; background: #eff6ff; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
             .chk-item input { width: 18px; height: 18px; cursor: pointer; accent-color: #4d97ff; flex-shrink: 0; }
@@ -68,7 +67,10 @@ export function renderDashboard(containerId, activePatient) {
             .gender-l { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; }
             .gender-p { background: #fdf2f8; color: #ec4899; border: 1px solid #fbcfe8; }
             
-            /* Detail View Specifics */
+            .canvas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px; align-items: start; }
+            .patient-card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); transition: 0.2s; }
+            .patient-card:hover { border-color: #cbd5e1; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+
             .detail-header { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); }
             .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
             .stat-box { background: white; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center; }
@@ -88,16 +90,16 @@ export function renderDashboard(containerId, activePatient) {
             .btn-activate { padding: 12px 25px; border: none; border-radius: 10px; background: #3b82f6; color: white; font-weight: 800; font-size: 13px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3); }
             .btn-activate:hover { background: #2563eb; transform: translateY(-2px); }
 
-            /* Diet Chart (Horizontal Bars) */
-            .diet-row { display: flex; align-items: center; margin-bottom: 10px; font-size: 0.85rem; }
-            .diet-label { width: 140px; font-weight: 800; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
-            .diet-bar-wrap { flex: 1; height: 18px; background: #f1f5f9; border-radius: 4px; overflow: hidden; margin: 0 10px; position: relative; }
-            .diet-bar { height: 100%; border-radius: 4px; background: #3b82f6; }
-            .diet-val { width: 40px; text-align: right; font-weight: 900; color: #1e293b; }
-
             .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
             .ov-card { background: white; padding: 20px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); }
             .ov-title { font-weight: 800; font-size: 1rem; color: #1e293b; margin-bottom: 15px; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; }
+
+            /* Timeline S.O.A.P Feed */
+            .timeline-feed { display: flex; flex-direction: column; gap: 15px; max-height: 400px; overflow-y: auto; padding-right: 10px; }
+            .feed-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; position: relative; }
+            .feed-date { font-size: 0.75rem; font-weight: 800; color: #4f46e5; text-transform: uppercase; margin-bottom: 5px; }
+            .feed-module { font-size: 0.8rem; font-weight: 700; color: #64748b; margin-bottom: 8px; display: inline-block; background: #e2e8f0; padding: 2px 8px; border-radius: 4px; }
+            .feed-note { font-size: 0.9rem; color: #1e293b; line-height: 1.5; }
 
             @media (max-width: 900px) {
                 .dash-sidebar { position: absolute; left: -340px; top: 0; bottom: 0; z-index: 10; box-shadow: 4px 0 15px rgba(0,0,0,0.1); }
@@ -144,7 +146,7 @@ export function renderDashboard(containerId, activePatient) {
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <button class="btn-icon" id="btn-toggle-sidebar" title="Buka/Tutup Daftar Pasien">${iconMenu}</button>
                         <div style="display:flex; align-items:center; gap:8px; font-weight: 800; color: #1e293b; font-size: 16px;">
-                            ${iconChart} REKAM MEDIS & ANALITIK
+                            ${iconChart} EXECUTIVE CLINICAL DASHBOARD
                         </div>
                     </div>
                 </div>
@@ -203,7 +205,7 @@ async function loadPatientsFromDB() {
 
         window.DashHandler.filterList();
 
-        // --- V6 AUTO-DETECT ACTIVE PATIENT ---
+        // --- AUTO-DETECT ACTIVE PATIENT ---
         const rawActive = localStorage.getItem('eloq_active_patient');
         if (rawActive) {
             const activePat = JSON.parse(rawActive);
@@ -215,12 +217,11 @@ async function loadPatientsFromDB() {
                     gender: foundInList.es_patients.gender,
                     instName: foundInList.es_institutions?.name || '-'
                 }];
-                // Default to OVERALL
                 DashboardState.selectedModule[foundInList.patient_id] = 'OVERALL';
                 renderCanvas(); 
                 await fetchPatientLogs(foundInList.patient_id); 
                 renderCanvas(); 
-                return; // Stop here, Auto-detect handled it
+                return; 
             }
         }
 
@@ -284,12 +285,14 @@ async function fetchPatientLogs(patientId) {
     }
 }
 
-// --- GENERATOR OVERALL (HOLISTIC) ---
+// --- GENERATOR OVERALL (EXECUTIVE VIEW) ---
+
 function buildOverallRadarChart(logs) {
     const domainScores = { 'Motorik': {sum:0, count:0}, 'Kognitif': {sum:0, count:0}, 'Memori': {sum:0, count:0}, 'Bahasa': {sum:0, count:0} };
     
     logs.forEach(l => {
         const d = getDomainCategory(l.session_metadata?.module_code);
+        // Prioritaskan precision_offset_rel, fallback ke accuracy_pct jika ada (CSV retro-compatibility)
         const acc = l.precision_offset_rel !== undefined ? l.precision_offset_rel : (l.session_metadata?.accuracy_pct || 0);
         domainScores[d].sum += acc;
         domainScores[d].count++;
@@ -335,8 +338,58 @@ function buildOverallRadarChart(logs) {
     `;
 }
 
-function buildOverallPromptTrend(logs) {
+// 2. IMPULSIVITY CHART (Jitter vs Latency)
+function buildImpulsivityChart(logs) {
     const w = 1000; const h = 180; const padX = 40; const padY = 30;
+    const effW = w - (padX * 2); const effH = h - (padY * 2);
+
+    if (logs.length < 2) return `<div style="text-align:center; padding:30px; color:#94a3b8; font-size:12px;">Data tidak cukup untuk melihat tren.</div>`;
+
+    const stepX = effW / (logs.length - 1);
+    let ptsJitter = [];
+    let ptsLatency = [];
+    
+    // Temukan max untuk scaling
+    let maxJitter = Math.max(...logs.map(l => l.jitter_index || 0), 5);
+    let maxLatency = Math.max(...logs.map(l => (l.cognitive_latency_ms || 0)/1000), 10);
+    
+    logs.forEach((log, i) => {
+        const x = padX + (i * stepX);
+        
+        // Jitter (Kesalahan / Impulsif) -> Oranye
+        let jit = log.jitter_index || 0;
+        let yJit = (h - padY) - ((jit / maxJitter) * effH);
+        ptsJitter.push(`${x},${yJit}`);
+
+        // Latency (Waktu Pikir) -> Biru
+        let sec = (log.cognitive_latency_ms || 0)/1000;
+        let yLat = (h - padY) - ((sec / maxLatency) * effH);
+        ptsLatency.push(`${x},${yLat}`);
+    });
+
+    return `
+        <div class="chart-legend" style="margin-bottom:5px;">
+            <div class="legend-item"><div class="legend-color" style="background:#f59e0b;"></div>Salah/Jitter (Count)</div>
+            <div class="legend-item"><div class="legend-color" style="background:#3b82f6;"></div>Waktu Pikir/Latency (Sec)</div>
+        </div>
+        <svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="none" style="overflow:visible;">
+            <line x1="${padX}" y1="${padY}" x2="${w-padX}" y2="${padY}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4" />
+            <line x1="${padX}" y1="${h/2}" x2="${w-padX}" y2="${h/2}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4" />
+            <line x1="${padX}" y1="${h-padY}" x2="${w-padX}" y2="${h-padY}" stroke="#cbd5e1" stroke-width="2" />
+            
+            <polyline points="${ptsLatency.join(' ')}" fill="none" stroke="#3b82f6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="${ptsJitter.join(' ')}" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            
+            ${ptsLatency.map(p => `<circle cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="4" fill="#fff" stroke="#3b82f6" stroke-width="2"/>`).join('')}
+            ${ptsJitter.map(p => `<circle cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="4" fill="#fff" stroke="#f59e0b" stroke-width="2"/>`).join('')}
+        </svg>
+        <div style="text-align:center; font-size:11px; color:#64748b; margin-top:5px;">Analisis: Jitter Tinggi + Latency Rendah = Impulsif (Terburu-buru).</div>
+    `;
+}
+
+// 3. TREN KEMANDIRIAN (Prompt Level Area Chart)
+function buildOverallPromptTrend(logs) {
+    const w = 1000; const h = 150; const padX = 40; const padY = 20;
     const effW = w - (padX * 2); const effH = h - (padY * 2);
 
     if (logs.length < 2) return `<div style="text-align:center; padding:30px; color:#94a3b8; font-size:12px;">Data tidak cukup untuk melihat tren kemandirian.</div>`;
@@ -346,50 +399,54 @@ function buildOverallPromptTrend(logs) {
     
     logs.forEach((log, i) => {
         const x = padX + (i * stepX);
-        // Prompt Level: 0 = Mandiri (100% tinggi), 1 = Verbal (50% tengah), 2 = Fisik (0% bawah)
         let pr = log.prompt_level || 0;
         let score = (2 - pr) / 2; // 0->1, 1->0.5, 2->0
         let y = (h - padY) - (score * effH);
         pts.push(`${x},${y}`);
     });
 
+    // Buat Area Polygon
+    const areaPoints = `${padX},${h-padY} ${pts.join(' ')} ${padX + (logs.length-1)*stepX},${h-padY}`;
+
     return `
         <svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="none" style="overflow:visible;">
             <line x1="${padX}" y1="${padY}" x2="${w-padX}" y2="${padY}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4" />
             <line x1="${padX}" y1="${h/2}" x2="${w-padX}" y2="${h/2}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4" />
             <line x1="${padX}" y1="${h-padY}" x2="${w-padX}" y2="${h-padY}" stroke="#cbd5e1" stroke-width="2" />
-            <text x="10" y="${padY+4}" font-size="10" font-weight="bold" fill="#64748b">Mandiri</text>
+            
+            <text x="10" y="${padY+4}" font-size="10" font-weight="bold" fill="#10b981">Mandiri</text>
+            <text x="10" y="${h/2+4}" font-size="10" font-weight="bold" fill="#f59e0b">Verbal</text>
             <text x="10" y="${h-padY+4}" font-size="10" font-weight="bold" fill="#ef4444">Fisik</text>
             
-            <polyline points="${pts.join(' ')}" fill="none" stroke="#3b82f6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-            ${pts.map(p => `<circle cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="4" fill="#fff" stroke="#3b82f6" stroke-width="2"/>`).join('')}
+            <polygon points="${areaPoints}" fill="rgba(16, 185, 129, 0.15)" />
+            <polyline points="${pts.join(' ')}" fill="none" stroke="#10b981" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+            ${pts.map(p => `<circle cx="${p.split(',')[0]}" cy="${p.split(',')[1]}" r="4" fill="#fff" stroke="#10b981" stroke-width="2"/>`).join('')}
         </svg>
     `;
 }
 
-function buildDietChart(logs) {
-    if(logs.length === 0) return '';
-    let counts = {};
-    logs.forEach(l => {
-        let code = l.session_metadata?.module_code || 'Lainnya';
-        code = code.replace(/_/g, ' ');
-        counts[code] = (counts[code] || 0) + 1;
-    });
+// 4. TIMELINE S.O.A.P GLOBAL
+function buildGlobalSOAPTimeline(logs) {
+    const validLogs = logs.filter(l => l.session_metadata?.therapist_notes && l.session_metadata.therapist_notes.trim() !== '');
+    if(validLogs.length === 0) return `<div style="text-align:center; padding:30px; color:#94a3b8; font-size:12px;">Belum ada satupun catatan klinis yang ditulis oleh terapis.</div>`;
 
-    const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]);
-    const maxCount = sorted[0][1];
-
-    return sorted.map(([name, count]) => {
-        const w = (count / maxCount) * 100;
-        return `
-            <div class="diet-row">
-                <div class="diet-label" title="${name}">${name}</div>
-                <div class="diet-bar-wrap"><div class="diet-bar" style="width:${w}%;"></div></div>
-                <div class="diet-val">${count}x</div>
-            </div>
-        `;
-    }).join('');
+    return `
+        <div class="timeline-feed">
+            ${validLogs.slice().reverse().map(l => {
+                const dateStr = new Date(l.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                const modName = (l.session_metadata?.module_code || 'Unknown Module').replace(/_/g, ' ').toUpperCase();
+                return `
+                    <div class="feed-item">
+                        <div class="feed-date">${dateStr}</div>
+                        <div class="feed-module">${modName}</div>
+                        <div class="feed-note">${l.session_metadata.therapist_notes}</div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
 }
+
 
 // --- MODUL SPECIFIC SVG ---
 function buildSVGChart(logs, isLarge = false) {
@@ -484,14 +541,13 @@ function renderDetailedView(patient) {
 
     const playedModules = [...new Set(logs.map(l => l.session_metadata?.module_code).filter(Boolean))];
     
-    // V6 Auto Set to OVERALL
     if (!DashboardState.selectedModule[patient.id]) {
         DashboardState.selectedModule[patient.id] = 'OVERALL';
     }
     
     const currentMod = DashboardState.selectedModule[patient.id];
-    let moduleOptions = `<option value="OVERALL" ${currentMod === 'OVERALL' ? 'selected' : ''}>🌟 OVERALL / RINGKASAN HOLISTIK</option>`;
-    moduleOptions += playedModules.map(m => `<option value="${m}" ${m === currentMod ? 'selected' : ''}>📊 Analisis Modul: ${m.replace(/_/g, ' ').toUpperCase()}</option>`).join('');
+    let moduleOptions = `<option value="OVERALL" ${currentMod === 'OVERALL' ? 'selected' : ''}>🌟 OVERALL / EXECUTIVE CLINICAL VIEW</option>`;
+    moduleOptions += playedModules.map(m => `<option value="${m}" ${m === currentMod ? 'selected' : ''}>📊 Analisis Spesifik: ${m.replace(/_/g, ' ').toUpperCase()}</option>`).join('');
 
     const headerHtml = `
         <div style="max-width: 1000px; margin: 0 auto; padding-bottom: 40px;">
@@ -514,11 +570,11 @@ function renderDetailedView(patient) {
     `;
 
     if (currentMod === 'OVERALL') {
-        // --- RENDER OVERALL VIEW ---
+        // --- V6.1 RENDER EXECUTIVE OVERALL VIEW ---
         container.innerHTML = headerHtml + `
             <div class="stat-row">
-                <div class="stat-box"><div class="stat-val" style="color:#3b82f6;">${logs.length}</div><div class="stat-lbl">Total Sesi Keseluruhan</div></div>
-                <div class="stat-box"><div class="stat-val" style="color:#10b981;">${playedModules.length}</div><div class="stat-lbl">Modul Dimainkan</div></div>
+                <div class="stat-box"><div class="stat-val" style="color:#3b82f6;">${logs.length}</div><div class="stat-lbl">Total Semua Sesi</div></div>
+                <div class="stat-box"><div class="stat-val" style="color:#10b981;">${playedModules.length}</div><div class="stat-lbl">Modul Dieksplorasi</div></div>
             </div>
             
             <div class="grid-2col">
@@ -527,19 +583,26 @@ function renderDetailedView(patient) {
                     ${buildOverallRadarChart(logs)}
                 </div>
                 <div class="ov-card">
-                    <div class="ov-title">Distribusi Diet Terapi</div>
-                    <div style="max-height:200px; overflow-y:auto; padding-right:10px;">
-                        ${buildDietChart(logs)}
+                    <div class="ov-title">Indeks Impulsivitas (Jitter vs Latency)</div>
+                    <div style="height:150px; margin-top:20px;">
+                        ${buildImpulsivityChart(logs)}
                     </div>
                 </div>
             </div>
 
-            <div class="ov-card">
-                <div class="ov-title">Tren Kemandirian Global (Semua Modul)</div>
-                <div style="height:180px;">
-                    ${buildOverallPromptTrend(logs)}
+            <div class="grid-2col">
+                <div class="ov-card">
+                    <div class="ov-title">Tren Sapih Bantuan (Fading Prompt)</div>
+                    <div style="height:150px;">
+                        ${buildOverallPromptTrend(logs)}
+                    </div>
+                    <div style="text-align:center; font-size:11px; color:#64748b; margin-top:10px;">Grafik hijau menanjak indikasi kemandirian penuh lintas modul.</div>
                 </div>
-                <div style="text-align:center; font-size:11px; color:#64748b; margin-top:10px;">Grafik menunjukkan pergerakan dari Bantuan Fisik menuju Kemandirian penuh seiring waktu.</div>
+                
+                <div class="ov-card" style="grid-row: span 2;">
+                    <div class="ov-title">Buku Harian Klinis (S.O.A.P Timeline)</div>
+                    ${buildGlobalSOAPTimeline(logs)}
+                </div>
             </div>
         </div>`;
     } else {
