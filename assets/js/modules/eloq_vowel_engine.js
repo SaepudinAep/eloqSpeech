@@ -1,5 +1,7 @@
-// eloq_vowel_engine.js - V5.0 (Clinical Grade: Adaptive Pre-Flight, Smart VSA, Playback Audit)
-// Features: RMS Calibration, Dual-Pipeline (Real-time + MediaRecorder), Shoelace Polygon VSA
+// eloq_vowel_engine.js - V5.1 (Standardized Clinical Edition)
+// Features: RMS Calibration, Dual-Pipeline (Real-time + MediaRecorder), Shoelace Polygon VSA.
+// Enrichment: In-Flight Setup Navigation & Post-Flight S.O.A.P Database Integration.
+// Pattern: Strict Standard Architecture (No Core Logic Cleaning).
 
 import { supabase } from '../config.js';
 
@@ -377,7 +379,10 @@ function buildWorkspace(appRoot) {
     appRoot.innerHTML = `
         <div class="eve-header">
             <div><div class="eve-title">Biofeedback Artikulasi</div></div>
-            <button class="eve-icon-btn" id="btn-exit-session" style="background:#fff1f2; color:#db2777; border-color:#fbcfe8;">✖ Keluar</button>
+            <div style="display:flex; gap:10px;">
+                <button class="eve-icon-btn" id="btn-setup-session" style="background:#f1f5f9; color:#475569; border-color:#cbd5e1;">⚙️ Setup</button>
+                <button class="eve-icon-btn" id="btn-exit-session" style="background:#fff1f2; color:#db2777; border-color:#fbcfe8;">✖ Keluar</button>
+            </div>
         </div>
         <div class="eve-workspace">
             <div class="eve-status" id="eve-status-text">Persiapan...</div>
@@ -390,6 +395,13 @@ function buildWorkspace(appRoot) {
     `;
     
     document.getElementById('btn-exit-session').onclick = exitToDashboard;
+    document.getElementById('btn-setup-session').onclick = () => {
+        nukeArtifacts();
+        const root = document.getElementById('eve-app');
+        root.innerHTML = '';
+        showStartScreen(root);
+    };
+
     prepareNextVowel();
     drawChartGrid();
 }
@@ -564,12 +576,34 @@ function showDashboard() {
                     `).join('')}
                 </div>
             </div>
+
+            <hr style="border:none; border-top:1px solid #e2e8f0; margin:30px 0 20px 0;">
+            <div style="background:#f8fafc; padding:20px; border-radius:12px; border:1px solid #cbd5e1; margin-bottom:20px; text-align:left;">
+                <div style="font-weight:800; color:#1e293b; margin-bottom:15px; text-transform:uppercase; font-size:0.9rem;">Form Observasi Klinis (S.O.A.P)</div>
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:5px;">Tingkat Bantuan Akhir (Prompt Level):</label>
+                    <select id="eve-final-prompt" class="eve-select" style="margin-bottom:0; padding:10px;">
+                        <option value="0">Mandiri (0)</option>
+                        <option value="1">Verbal/Visual Hint (1)</option>
+                        <option value="2">Fisik Penuh (2)</option>
+                    </select>
+                </div>
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:5px;">Catatan Terapis:</label>
+                    <textarea id="eve-clinical-notes" class="eve-select" style="min-height:80px; resize:vertical; padding:10px; margin-bottom:0;" placeholder="Tuliskan respon dan fokus pasien..."></textarea>
+                </div>
+                <button class="eve-btn eve-btn-action" id="btn-save-db" style="width:100%;">💾 SIMPAN REKAM MEDIS</button>
+            </div>
+
         </div>
     `;
     appRoot.appendChild(overlay);
     overlay.querySelector('#btn-dash-exit').onclick = exitToDashboard;
     
     state.sequence.forEach(v => setupPlaybackListener(v));
+    
+    // Bind the save button
+    document.getElementById('btn-save-db').onclick = saveVowelDataToDB;
     
     if(state.engine && state.engine.microphone) {
         state.engine.microphone.disconnect();
@@ -632,4 +666,61 @@ function drawFinalVSA(data, activeSequence) {
         const pos = mapToCanvas(data[v].f1_mean, data[v].f2_mean, cvs.width, cvs.height);
         drawNode(pos, CONFIG.COLORS[v], v);
     });
+}
+
+// --- DATABASE INTEGRATION (Enrichment) ---
+async function saveVowelDataToDB() {
+    const btn = document.getElementById('btn-save-db');
+    const promptLevel = parseInt(document.getElementById('eve-final-prompt').value);
+    const notes = document.getElementById('eve-clinical-notes').value;
+
+    btn.innerHTML = "⏳ MENYIMPAN..."; btn.disabled = true;
+
+    try {
+        const rawPatient = localStorage.getItem('eloq_active_patient');
+        if (!rawPatient) throw new Error("Pilih pasien terlebih dahulu di bagian header aplikasi!");
+        const activePatient = JSON.parse(rawPatient);
+
+        // Fetch UUID Modul Vowel Engine
+        const { data: menuData } = await supabase.from('es_menus').select('module_uuid').eq('module_name', 'eloq_vowel_engine').single();
+        const exerciseId = menuData ? menuData.module_uuid : null;
+
+        const metrics = state.engine.clinicalMetrics;
+        const sessionData = state.engine.sessionData;
+
+        const payload = {
+            patient_id: activePatient.id,
+            exercise_id: exerciseId,
+            cognitive_latency_ms: 0, // Akustik murni, tidak ada latensi klik
+            prompt_level: promptLevel,
+            is_success: true, // Observasi klinis tanpa sistem gagal/lulus
+            precision_offset_rel: parseFloat(metrics.vai_score.toFixed(2)) || 0, // VAI mapped to precision
+            jitter_index: parseFloat(metrics.fcr_ratio.toFixed(2)) || 0, // FCR mapped to jitter
+            touch_radius: parseFloat(metrics.vsa_area.toFixed(2)) || 0, // VSA Area mapped to touch_radius
+            session_metadata: {
+                module_code: "vowel_space_engine",
+                sequence: state.sequence,
+                vsa_area: metrics.vsa_area,
+                vai_score: metrics.vai_score,
+                fcr_ratio: metrics.fcr_ratio,
+                vowel_details: state.sequence.map(v => ({
+                    vowel: v,
+                    f1_mean: sessionData[v].f1_mean,
+                    f2_mean: sessionData[v].f2_mean,
+                    stability: sessionData[v].stability
+                })),
+                therapist_notes: notes
+            }
+        };
+
+        const { error } = await supabase.from('es_game_logs').insert(payload);
+        if (error) throw error;
+
+        alert("✅ Berhasil! Data Sesi Vowel Space (VSA) sudah diamankan ke Database.");
+        exitToDashboard();
+
+    } catch (err) {
+        alert("GAGAL MENYIMPAN: " + err.message);
+        btn.innerHTML = "💾 SIMPAN REKAM MEDIS"; btn.disabled = false;
+    }
 }

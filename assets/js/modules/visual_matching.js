@@ -1,7 +1,7 @@
-// visual_matching.js - V6.1 (Metadata Fix & Unified Bucket)
+// visual_matching.js - V6.2 (Standardized Clinical Edition)
 // Features: Dynamic Metadata Parsing (Fixed Object Type), Unified Bucket UI, Global Sweeper, Anti-Stuck.
-// Status: ISOLATED PROTOTYPE (Tidak menyimpan ke database utama).
-// Pattern: Strict Standard Architecture.
+// Enrichment: In-Flight Navigation & Post-Flight S.O.A.P Database Integration.
+// Pattern: Strict Standard Architecture (No Core Logic Cleaning).
 
 import { supabase } from '../config.js';
 
@@ -21,6 +21,17 @@ const ICONS = {
     PLAY: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="m7 4 12 8-12 8V4Z"/></svg>`,
     CHECK: `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>`,
     CHART: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>`
+};
+
+// --- GLOBAL EXIT PROTOCOL ---
+window.vm_exitToDashboard = () => {
+    sweepClones();
+    if(audioCtx && audioCtx.state !== 'closed') audioCtx.close();
+    const container = document.querySelector('.vm-app')?.parentElement;
+    if(container) container.innerHTML = '';
+    if (typeof window.renderApp === 'function') window.renderApp(null);
+    else if (typeof window.loadModule === 'function') window.loadModule('digital_area');
+    else window.location.reload();
 };
 
 // --- AUDIO ENGINE ---
@@ -229,7 +240,7 @@ async function fetchData() {
         
         rawData = (i || []).filter(item => item.es_game_assets && item.es_game_assets.some(a => a.media_type === 'IMAGE'));
         
-        // Parse JSON Metadata (Penanganan Supabase Native JSON/JSONB)
+        // Parse JSON Metadata
         rawData.forEach(item => {
             if (typeof item.item_metadata === 'object' && item.item_metadata !== null) {
                 item.parsedMeta = item.item_metadata;
@@ -255,7 +266,6 @@ function updateDynamicModes() {
     items.forEach(item => {
         if (item.parsedMeta) {
             Object.keys(item.parsedMeta).forEach(k => {
-                // Jangan masukkan key jika isinya kosong
                 if (item.parsedMeta[k] && item.parsedMeta[k].toString().trim() !== '') {
                     keys.add(k);
                 }
@@ -278,7 +288,7 @@ function updateDynamicModes() {
 
 // --- ROUTER & VIEW RENDERER ---
 function renderRouter() {
-    sweepClones(); // Sapu bersih bayangan sisa ronde sebelumnya
+    sweepClones(); 
     const root = document.getElementById('vm-app-root');
     if (!root) return;
 
@@ -332,10 +342,14 @@ function renderRouter() {
             instruction = `KUMPULKAN YANG ${attr.toUpperCase()}NYA ${val.toUpperCase()}!`;
         }
         
+        // V6.2 Enrichment: Standardized Nav
         root.innerHTML = `
             <div class="vm-nav">
                 <div style="font-weight:800; color:var(--slate);">Ronde ${appState.game.currentRoundIdx + 1} / ${appState.config.totalRounds}</div>
-                <button class="btn-start" style="width:auto; padding:8px 15px; font-size:0.85rem; background:#f1f5f9; color:var(--d);" onclick="window.vm_resetSetup()">Batal Sesi</button>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn-start" style="width:auto; padding:8px 15px; font-size:0.85rem; background:#f1f5f9; color:#475569;" onclick="window.vm_resetSetup()">⚙️ SETUP</button>
+                    <button class="btn-start" style="width:auto; padding:8px 15px; font-size:0.85rem; background:#fff1f2; color:#db2777;" onclick="window.vm_exitToDashboard()">✖ KELUAR</button>
+                </div>
             </div>
             <div class="vm-body" style="justify-content:flex-start;">
                 
@@ -348,7 +362,7 @@ function renderRouter() {
                         <img src="${exampleImg}">
                         <span>Samakan dengan Ini ➔</span>
                     </div>
-                    </div>
+                </div>
                 
                 <div class="options-grid">
                     ${r.options.map((opt, idx) => {
@@ -367,6 +381,8 @@ function renderRouter() {
         appState.game.roundStartTime = Date.now();
     } else if (appState.view === 'REPORT') {
         root.innerHTML = renderReport();
+        const btnSave = document.getElementById('btn-save-db');
+        if (btnSave) btnSave.onclick = saveVMDataToDB;
     }
 }
 
@@ -499,13 +515,13 @@ function checkAnswer(instanceId, isCorrect) {
     }
 }
 
-// --- POST-SESSION REPORT ---
+// --- POST-SESSION REPORT & DB ---
 function renderReport() {
     const logs = appState.game.sessionLogs;
     const total = logs.length;
     const correctFirstAttempts = logs.filter(l => l.firstAttemptCorrect).length;
-    const accuracy = Math.round((correctFirstAttempts / total) * 100);
-    const avgLatencyMs = logs.reduce((sum, l) => sum + l.latencyMs, 0) / total;
+    const accuracy = Math.round((total > 0 ? (correctFirstAttempts / total) : 0) * 100);
+    const avgLatencyMs = total > 0 ? logs.reduce((sum, l) => sum + l.latencyMs, 0) / total : 0;
     const avgLatencySec = (avgLatencyMs / 1000).toFixed(1);
 
     let errorRows = '';
@@ -519,7 +535,7 @@ function renderReport() {
     return `
         <div class="vm-nav">
             <div class="vm-title">${ICONS.CHART} Laporan Klasifikasi Kognitif</div>
-            <button class="btn-start" style="width:auto; padding:8px 15px; font-size:0.85rem;" onclick="window.vm_resetSetup()">SELESAI</button>
+            <button class="btn-start" style="width:auto; padding:8px 15px; font-size:0.85rem; background:#fff1f2; color:#db2777;" onclick="window.vm_exitToDashboard()">✖ KELUAR</button>
         </div>
         <div class="vm-body" style="align-items:center;">
             <div class="report-grid">
@@ -544,6 +560,81 @@ function renderReport() {
                 <tbody>${errorRows}</tbody>
             </table>
             ` : `<div style="padding:20px; background:#f0fdf4; color:var(--s); border-radius:12px; font-weight:800; border:1px solid #bbf7d0; text-align:center; width:100%; max-width:800px;">🎉 Sempurna! Penyortiran kognitif berhasil tanpa cacat.</div>`}
+            
+            <hr style="border:none; border-top:1px solid #e2e8f0; margin:30px 0; width:100%; max-width:800px;">
+            <div style="background:#f8fafc; padding:20px; border-radius:12px; border:1px solid #cbd5e1; text-align:left; width:100%; max-width:800px; margin-bottom:20px;">
+                <div style="font-weight:800; color:#1e293b; margin-bottom:15px; text-transform:uppercase; font-size:0.9rem;">Form Observasi Klinis (S.O.A.P)</div>
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:5px;">Tingkat Bantuan Akhir (Prompt Level):</label>
+                    <select id="vm-final-prompt" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; outline:none; font-family:inherit;">
+                        <option value="0">Mandiri (0)</option>
+                        <option value="1">Verbal/Visual Hint (1)</option>
+                        <option value="2">Fisik Penuh (2)</option>
+                    </select>
+                </div>
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:5px;">Catatan Terapis:</label>
+                    <textarea id="vm-clinical-notes" style="width:100%; min-height:80px; padding:10px; border-radius:8px; border:1px solid #cbd5e1; outline:none; resize:vertical; font-family:inherit;" placeholder="Tuliskan respon dan fokus pasien..."></textarea>
+                </div>
+                <button class="btn-start" id="btn-save-db" style="width:100%; border-radius:8px;">💾 SIMPAN REKAM MEDIS</button>
+            </div>
         </div>
     `;
+}
+
+async function saveVMDataToDB() {
+    const btn = document.getElementById('btn-save-db');
+    const promptLevel = parseInt(document.getElementById('vm-final-prompt').value);
+    const notes = document.getElementById('vm-clinical-notes').value;
+
+    btn.innerHTML = "⏳ MENYIMPAN..."; btn.disabled = true;
+
+    try {
+        const rawPatient = localStorage.getItem('eloq_active_patient');
+        if (!rawPatient) throw new Error("Pilih pasien terlebih dahulu di bagian header aplikasi!");
+        const activePatient = JSON.parse(rawPatient);
+
+        // Fetch UUID Modul Visual Matching
+        const { data: menuData } = await supabase.from('es_menus').select('module_uuid').eq('module_name', 'visual_matching_engine').single();
+        const exerciseId = menuData ? menuData.module_uuid : null;
+
+        const logs = appState.game.sessionLogs;
+        const total = logs.length;
+        const correctFirstAttempts = logs.filter(l => l.firstAttemptCorrect).length;
+        const accuracy = (total > 0) ? (correctFirstAttempts / total) * 100 : 0;
+        const avgLatencyMs = (total > 0) ? logs.reduce((sum, l) => sum + l.latencyMs, 0) / total : 0;
+        const totalMistakes = logs.reduce((sum, l) => sum + l.mistakes.length, 0);
+
+        const payload = {
+            patient_id: activePatient.id,
+            exercise_id: exerciseId,
+            cognitive_latency_ms: Math.round(avgLatencyMs),
+            prompt_level: promptLevel,
+            is_success: accuracy >= 80,
+            precision_offset_rel: parseFloat(accuracy.toFixed(2)),
+            jitter_index: totalMistakes,
+            touch_radius: 0.0,
+            session_metadata: {
+                module_code: "visual_matching_engine",
+                config_used: appState.config,
+                total_drag_errors: totalMistakes,
+                therapist_notes: notes,
+                error_logs: logs.map((l, i) => ({
+                    round: i + 1,
+                    category: appState.game.rounds[i].categoryName,
+                    mistake_count: l.mistakes.length
+                }))
+            }
+        };
+
+        const { error } = await supabase.from('es_game_logs').insert(payload);
+        if (error) throw error;
+
+        alert("✅ Berhasil! Data Sesi Visual Matching sudah diamankan ke Database.");
+        window.vm_exitToDashboard();
+
+    } catch (err) {
+        alert("GAGAL MENYIMPAN: " + err.message);
+        btn.innerHTML = "💾 SIMPAN REKAM MEDIS"; btn.disabled = false;
+    }
 }

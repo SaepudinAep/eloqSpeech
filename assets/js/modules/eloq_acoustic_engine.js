@@ -1,5 +1,6 @@
-// eloq_acoustic_engine.js - V1.6 (Manual Trigger & Retake Edition)
+// eloq_acoustic_engine.js - V1.7 (STANDARDIZED CLINICAL EDITION)
 // Features: Framing Scroll Lock, 3-2-1 Countdown Trigger, Per-Trial Manual Start, Retake Option.
+// Enrichment: In-Flight Setup Navigation & Post-Flight S.O.A.P Database Integration.
 
 import { supabase } from '../config.js';
 
@@ -87,9 +88,10 @@ const STYLES = `
         box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3); transition: 0.2s;
     }
     .eae-btn-primary:active { transform: scale(0.95); }
+    .eae-btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; box-shadow: none; transform: none; }
     .eae-icon-btn { padding: 8px 15px; border-radius: 5px; border: 1px solid #cbd5e1; background: white; cursor: pointer; font-weight: bold; color: #1e293b; font-size: 0.85rem; transition: 0.2s; }
     .eae-btn-danger { background: #ef4444; color: white; border: none; padding: 12px 30px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-    .eae-dash-wrapper { max-width: 1000px; width: 100%; margin: 0 auto; padding-bottom: 40px; }
+    .eae-dash-wrapper { max-width: 1000px; width: 100%; margin: 0 auto; padding-bottom: 40px; text-align: left; }
     .eae-summary-box { background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
     .eae-metric-col { text-align: center; border-right: 1px solid #f1f5f9; padding: 10px; }
     .eae-metric-col:last-child { border-right: none; }
@@ -187,7 +189,10 @@ function buildWorkspace(appRoot) {
                 <div class="eae-title">Asesmen Akustik Klinis</div>
                 <div class="eae-instruction" id="eae-inst">Persiapan Kalibrasi...</div>
             </div>
-            <button class="eae-icon-btn" id="btn-exit-session" style="background:#fff1f2; color:#db2777; border-color:#fbcfe8;">✖ Keluar</button>
+            <div style="display:flex; gap:10px;">
+                <button class="eae-icon-btn" id="btn-setup-session" style="background:#f1f5f9; color:#475569; border-color:#cbd5e1;">⚙️ Setup</button>
+                <button class="eae-icon-btn" id="btn-exit-session" style="background:#fff1f2; color:#db2777; border-color:#fbcfe8;">✖ Keluar</button>
+            </div>
         </div>
         <div class="eae-workspace" id="eae-workspace">
             <div class="eae-start-overlay" id="eae-start-overlay">
@@ -199,7 +204,15 @@ function buildWorkspace(appRoot) {
             <div id="eae-dynamic-content" style="display:flex; flex-direction:column; align-items:center; width:100%; max-width:500px;"></div>
         </div>
     `;
+    
     document.getElementById('btn-exit-session').onclick = exitToDashboard;
+    document.getElementById('btn-setup-session').onclick = () => {
+        nukeArtifacts();
+        const root = document.getElementById('eae-app');
+        root.innerHTML = '';
+        showStartScreen(root);
+    };
+
     state.isActive = true; state.currentTrial = 1; state.sessionLogs = [];
     
     document.body.style.overflow = '';
@@ -463,10 +476,31 @@ function showDashboard() {
                 <div class="eae-metric-col"><div class="eae-m-val" style="color:${consColor};">${consistency.toFixed(1)}%</div><div class="eae-m-lbl">Konsistensi</div></div>
             </div>
             <div class="eae-dash-grid">${cardsHtml}</div>
+            
+            <hr style="border:none; border-top:1px solid #e2e8f0; margin:30px 0 20px 0;">
+            <div style="background:#f8fafc; padding:20px; border-radius:12px; border:1px solid #cbd5e1; margin-bottom:20px; text-align:left;">
+                <div style="font-weight:800; color:#1e293b; margin-bottom:15px; text-transform:uppercase; font-size:0.9rem;">Form Observasi Klinis (S.O.A.P)</div>
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:5px;">Tingkat Bantuan Akhir (Prompt Level):</label>
+                    <select id="eae-final-prompt" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; outline:none; font-family:inherit;">
+                        <option value="0">Mandiri (0)</option>
+                        <option value="1">Verbal/Visual Hint (1)</option>
+                        <option value="2">Fisik Penuh (2)</option>
+                    </select>
+                </div>
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:5px;">Catatan Terapis:</label>
+                    <textarea id="eae-clinical-notes" style="width:100%; min-height:80px; padding:10px; border-radius:8px; border:1px solid #cbd5e1; outline:none; resize:vertical; font-family:inherit;" placeholder="Tuliskan respon dan fokus pasien..."></textarea>
+                </div>
+                <button class="eae-btn-primary" id="btn-save-db" style="width:100%; border-radius:8px;">💾 SIMPAN REKAM MEDIS</button>
+            </div>
         </div>
     `;
     appRoot.appendChild(overlay);
     overlay.querySelector('#btn-dash-exit').onclick = exitToDashboard;
+    
+    document.getElementById('btn-save-db').onclick = () => saveAcousticDataToDB(maxMpt, avgShim, fatigue, consistency, meanMpt);
+
     if (state.microphone) { state.microphone.disconnect(); state.microphone = null; }
     
     setTimeout(() => { logs.forEach((log, index) => { drawOscilloscopeDashboard(`eae-cvs-${index}`, log.volumeData, index); setupPlaybackListener(index); }); }, 150);
@@ -514,4 +548,52 @@ function setupPlaybackListener(index) {
         } else { audio.pause(); btn.innerHTML = `▶️ Lanjutkan Uji ${index + 1}`; cancelAnimationFrame(state.playbackAnimIds[index]); }
     };
     audio.onended = () => { btn.innerHTML = `▶️ Putar Uji ${index + 1}`; cancelAnimationFrame(state.playbackAnimIds[index]); playhead.style.display = 'none'; playhead.style.left = '0px'; };
+}
+
+// V1.7 NEW: Database Integration
+async function saveAcousticDataToDB(maxMpt, avgShim, fatigue, consistency, meanMpt) {
+    const btn = document.getElementById('btn-save-db');
+    const promptLevel = parseInt(document.getElementById('eae-final-prompt').value);
+    const notes = document.getElementById('eae-clinical-notes').value;
+    
+    btn.innerHTML = "⏳ MENYIMPAN..."; btn.disabled = true;
+
+    try {
+        const rawPatient = localStorage.getItem('eloq_active_patient');
+        if (!rawPatient) throw new Error("Pilih pasien terlebih dahulu di bagian header aplikasi!");
+        const activePatient = JSON.parse(rawPatient);
+
+        const { data: menuData } = await supabase.from('es_menus').select('module_uuid').eq('module_name', 'eloq_acoustic_engine').single();
+        const exerciseId = menuData ? menuData.module_uuid : null;
+
+        const payload = {
+            patient_id: activePatient.id,
+            exercise_id: exerciseId,
+            cognitive_latency_ms: Math.round(meanMpt * 1000),
+            prompt_level: promptLevel,
+            is_success: true, 
+            precision_offset_rel: parseFloat(consistency.toFixed(2)),
+            jitter_index: parseFloat(avgShim.toFixed(2)),
+            touch_radius: 0.0,
+            session_metadata: {
+                module_code: "acoustic_mpt_engine",
+                mode: state.targetSound,
+                target_label: state.targetLabel,
+                fatigue_index: parseFloat(fatigue.toFixed(2)),
+                max_mpt_seconds: parseFloat(maxMpt.toFixed(2)),
+                trials: state.sessionLogs.map(l => ({ trial: l.trial, mpt: l.mpt, avgIntensity: l.avgIntensity, shimmer: l.shimmer, volumeData: l.volumeData })),
+                therapist_notes: notes
+            }
+        };
+
+        const { error } = await supabase.from('es_game_logs').insert(payload);
+        if (error) throw error;
+
+        alert("✅ Berhasil! Data Sesi Akustik (MPT) sudah diamankan ke Database.");
+        exitToDashboard();
+
+    } catch (err) {
+        alert("GAGAL MENYIMPAN: " + err.message);
+        btn.innerHTML = "💾 SIMPAN REKAM MEDIS"; btn.disabled = false;
+    }
 }

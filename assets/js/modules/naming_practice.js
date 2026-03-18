@@ -1,6 +1,7 @@
-// NAMING PRACTICE V5.1 - CLINICAL UI/UX EDITION
+// NAMING PRACTICE V5.4 - CLINICAL UI/UX EDITION
 // Fokus: Single Row Verdict (Anti-Misclick), SVG Iconography, Radar Chart, Smart Lock Max 12.
-// Rule: NO CLEANING. NO SYNTAX COLOR. SEQUENTIAL 1-5.
+// UX FIX: Voice Playback (Review Artikluasi), In-Flight Setup Button, Pulsing Record.
+// Rule: NO CLEANING. SEQUENTIAL 1-5.
 
 import { supabase } from '../config.js';
 
@@ -11,7 +12,8 @@ const ICONS = {
     SALAH: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
     RETAKE: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`,
     EXIT: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9"/></svg>`,
-    RETRY: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>`
+    RETRY: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>`,
+    PLAY: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
 };
 
 let rawData = [];
@@ -24,9 +26,10 @@ let appState = {
         currentRound: 1, cards: [], currentIdx: 0, 
         isListening: false, isSpeaking: false,
         startTime: 0, startSpeechTime: 0, silenceCounter: 0,
-        sessionLogs: [] 
+        sessionLogs: [], lastAudioUrl: null 
     },
-    audioCtx: null, analyser: null, microphone: null, animationFrameId: null
+    audioCtx: null, analyser: null, microphone: null, animationFrameId: null,
+    mediaRecorder: null, audioChunks: []
 };
 
 // --- NUKE & EXIT PROTOCOL ---
@@ -34,6 +37,9 @@ function nukeArtifacts() {
     appState.game.isListening = false;
     appState.game.isSpeaking = false;
     if (appState.animationFrameId) cancelAnimationFrame(appState.animationFrameId);
+    if (appState.mediaRecorder && appState.mediaRecorder.state !== 'inactive') {
+        try { appState.mediaRecorder.stop(); } catch(e) {}
+    }
     if (appState.microphone) {
         appState.microphone.mediaStream.getTracks().forEach(t => t.stop());
         appState.microphone.disconnect();
@@ -97,13 +103,30 @@ async function initSession() {
         appState.microphone = appState.audioCtx.createMediaStreamSource(s);
         appState.microphone.connect(appState.analyser);
 
+        // V5.4 Init MediaRecorder for Playback
+        appState.mediaRecorder = new MediaRecorder(s);
+        appState.mediaRecorder.ondataavailable = e => appState.audioChunks.push(e.data);
+        appState.mediaRecorder.onstop = () => {
+            const blob = new Blob(appState.audioChunks);
+            appState.game.lastAudioUrl = URL.createObjectURL(blob);
+            appState.audioChunks = [];
+            // Enable play button in verdict
+            const btnPlay = document.getElementById('btn-play-audio');
+            if(btnPlay) {
+                btnPlay.disabled = false;
+                btnPlay.style.opacity = '1';
+                btnPlay.style.transform = 'scale(1.1)';
+                setTimeout(() => btnPlay.style.transform = 'scale(1)', 200);
+            }
+        };
+
         appState.config.categoryId = document.getElementById('np-cat').value;
         appState.config.level = parseInt(document.getElementById('np-level').value);
         appState.config.totalRounds = parseInt(document.getElementById('np-rounds').value);
 
         const overlay = document.createElement('div');
         overlay.className = 'np-overlay';
-        overlay.innerHTML = `<div class="card-report" style="text-align:center;"><h2> Kalibrasi Akustik</h2><p style="color:#64748b;">Membaca tingkat kebisingan ruangan...</p></div>`;
+        overlay.innerHTML = `<div class="card-report" style="text-align:center;"><h2>🎙️ Kalibrasi Akustik</h2><p style="color:#64748b;">Membaca tingkat kebisingan ruangan...</p></div>`;
         document.getElementById('np-app-root').appendChild(overlay);
 
         let v = [];
@@ -134,18 +157,34 @@ function startRound() {
 function handleCardClick(idx) {
     if(idx !== appState.game.currentIdx || appState.game.isListening) return;
     document.getElementById('np-body').classList.add('spotlight-active');
+    
     document.querySelectorAll('.c-inner').forEach((el, i) => {
-        if(i === idx) el.classList.add('flipped', 'zoom-focus');
+        if(i === idx) {
+            el.classList.remove('zoom-out');
+            el.classList.add('flipped', 'zoom-focus');
+            setTimeout(() => {
+                const btnRec = document.getElementById(`btn-rec-${idx}`);
+                if(btnRec) {
+                    btnRec.innerHTML = '🎙️ MULAI REKAM';
+                    btnRec.classList.remove('recording');
+                    btnRec.classList.add('show');
+                }
+            }, 600);
+        }
         else el.classList.add('dim-hidden');
     });
-    setTimeout(() => startAcousticEngine(), 800);
 }
 
 function startAcousticEngine() {
+    appState.audioChunks = [];
+    appState.game.lastAudioUrl = null;
     appState.game.isListening = true;
     appState.game.isSpeaking = false;
     appState.game.startTime = Date.now();
     appState.game.silenceCounter = 0;
+    
+    try { appState.mediaRecorder.start(); } catch(e){} // Start recording raw audio
+
     const d = new Uint8Array(appState.analyser.fftSize);
     const viz = document.getElementById('vol-bar');
 
@@ -153,10 +192,12 @@ function startAcousticEngine() {
         if(!appState.game.isListening) return;
         appState.analyser.getByteTimeDomainData(d);
         const vol = getRMS(d);
+        
         if(viz) {
             viz.style.height = `${Math.min(100, vol)}%`;
             viz.style.background = vol > appState.calibration.noiseFloor ? '#10b981' : '#64748b';
         }
+        
         if(vol > appState.calibration.noiseFloor) {
             if(!appState.game.isSpeaking) { appState.game.isSpeaking = true; appState.game.startSpeechTime = Date.now(); }
             appState.game.silenceCounter = 0;
@@ -177,21 +218,31 @@ function stopTracking() {
     const flu = (Date.now() - 800) - appState.game.startSpeechTime;
     appState.game.isListening = false;
     cancelAnimationFrame(appState.animationFrameId);
+    
+    try { appState.mediaRecorder.stop(); } catch(e){} // Stop recording to trigger onstop
+    
+    const btnRec = document.getElementById(`btn-rec-${appState.game.currentIdx}`);
+    if(btnRec) btnRec.classList.remove('show', 'recording');
+
     showVerdict(Math.max(0, lat), Math.max(0, flu));
 }
 
-// 1-LINE VERDICT ROW (TABLET OPTIMIZED)
+// 1-LINE VERDICT ROW WITH PLAYBACK
 function showVerdict(lat, flu) {
     const o = document.createElement('div');
     o.className = 'np-overlay';
     o.innerHTML = `
         <div class="card-report" style="width:100%; max-width:650px; padding:30px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:25px; background:#f8fafc; padding:15px 30px; border-radius:16px; border:1px solid #e2e8f0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; background:#f8fafc; padding:15px 30px; border-radius:16px; border:1px solid #e2e8f0;">
                 <div style="text-align:center;">
                     <span style="font-size:0.75rem; font-weight:800; color:#64748b; letter-spacing:1px;">LATENCY (OTAK)</span><br>
                     <b style="font-size:1.8rem; color:#4f46e5;">${(lat/1000).toFixed(2)}s</b>
                 </div>
-                <div style="width:2px; background:#e2e8f0;"></div>
+                
+                <button id="btn-play-audio" disabled style="opacity:0.4; background:#e0e7ff; color:#4f46e5; border:none; padding:15px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:transform 0.2s, opacity 0.2s; box-shadow:0 4px 10px rgba(79, 70, 229, 0.2);" onclick="window.np_play_audio()">
+                    ${ICONS.PLAY}
+                </button>
+
                 <div style="text-align:center;">
                     <span style="font-size:0.75rem; font-weight:800; color:#64748b; letter-spacing:1px;">FLUENCY (MULUT)</span><br>
                     <b style="font-size:1.8rem; color:#10b981;">${(flu/1000).toFixed(2)}s</b>
@@ -217,13 +268,28 @@ function showVerdict(lat, flu) {
 }
 
 function saveResult(ok, p, lat, flu) {
-    appState.game.sessionLogs.push({ item: appState.game.cards[appState.game.currentIdx].item_name, ok, p, lat, flu, round: appState.game.currentRound });
+    appState.game.sessionLogs.push({ 
+        item: appState.game.cards[appState.game.currentIdx].item_name, 
+        ok, p, lat, flu, 
+        round: appState.game.currentRound,
+        audioUrl: appState.game.lastAudioUrl // V5.4 Save Audio for End Report
+    });
+    
     document.querySelectorAll('.np-overlay').forEach(el => el.remove());
-    appState.game.currentIdx++;
-    if(appState.game.currentIdx >= appState.game.cards.length) {
-        if(appState.game.currentRound >= appState.config.totalRounds) { nukeArtifacts(); appState.view = 'REPORT'; render(); }
-        else { appState.game.currentRound++; startRound(); }
-    } else { render(); }
+    
+    const currentCard = document.getElementById(`c-${appState.game.currentIdx}`);
+    if (currentCard) {
+        currentCard.classList.remove('zoom-focus');
+        currentCard.classList.add('zoom-out'); 
+    }
+
+    setTimeout(() => {
+        appState.game.currentIdx++;
+        if(appState.game.currentIdx >= appState.game.cards.length) {
+            if(appState.game.currentRound >= appState.config.totalRounds) { nukeArtifacts(); appState.view = 'REPORT'; render(); }
+            else { appState.game.currentRound++; startRound(); }
+        } else { render(); }
+    }, 600);
 }
 
 // --- RADAR CHART (SVG) ---
@@ -278,7 +344,7 @@ function render() {
     const root = document.getElementById('np-app-root');
     if(appState.view === 'SETUP') {
         root.innerHTML = `
-            <div class="np-nav"><b style="font-size:1.1rem; color:#1e293b;"> Setup Latihan Penamaan</b></div>
+            <div class="np-nav"><b style="font-size:1.1rem; color:#1e293b;">🎙️ Setup Latihan Penamaan</b></div>
             <div class="np-body" style="justify-content:center;">
                 <div class="card-report" style="width:100%; max-width:450px;">
                     <label class="np-lbl">BEBAN VISUAL (1-5)</label>
@@ -293,7 +359,7 @@ function render() {
                     <select id="np-cat" class="np-sel"></select>
                     <label class="np-lbl">RONDE (SMART LOCK MAX 12)</label>
                     <select id="np-rounds" class="np-sel"></select>
-                    <button id="btn-start" onclick="window.np_init()" class="btn-p" style="margin-top:25px; background:#4f46e5; width:100%; font-size:1.1rem;">MULAI ASESMEN</button>
+                    <button id="btn-start" onclick="window.np_init()" class="btn-p" style="margin-top:25px; background:#4f46e5; width:100%; color:white; font-size:1.1rem;">MULAI ASESMEN</button>
                 </div>
             </div>
         `;
@@ -305,8 +371,13 @@ function render() {
                     <div class="c-f">${i+1}</div>
                     <div class="c-b"><img src="${c.es_game_assets[0]?.public_url}"></div>
                 </div>
+                <button id="btn-rec-${i}" class="btn-record-manual" onclick="event.stopPropagation(); window.np_start_record(${i})">
+                    🎙️ MULAI REKAM
+                </button>
             </div>
         `).join('');
+        
+        // V5.4 IN-FLIGHT NAV BUTTONS
         root.innerHTML = `
             <div class="np-nav">
                 <span style="font-weight:800; color:#64748b;">RONDE ${appState.game.currentRound} / ${appState.config.totalRounds}</span>
@@ -314,14 +385,29 @@ function render() {
                     <div id="vol-bar"></div>
                     <div style="position:absolute; bottom:${appState.calibration.noiseFloor}%; width:100%; height:2px; background:#ef4444; z-index:10;"></div>
                 </div>
-                <button onclick="window.np_exit()" class="btn-exit-sm">${ICONS.EXIT} KELUAR</button>
+                <div style="display:flex; gap:10px;">
+                    <button onclick="window.np_retry()" class="btn-exit-sm" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">⚙️ SETUP</button>
+                    <button onclick="window.np_exit()" class="btn-exit-sm">${ICONS.EXIT} KELUAR</button>
+                </div>
             </div>
             <div class="np-body" id="np-body"><div class="play-grid">${cards}</div></div>
         `;
     } else if(appState.view === 'REPORT') {
         const logs = appState.game.sessionLogs;
+        
+        // V5.4 Audio Review List
+        const audioListHtml = logs.map((l, i) => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid #f1f5f9;">
+                <span style="font-weight:600; color:#1e293b;">R${l.round} - ${l.item}</span>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span style="font-size:0.75rem; font-weight:800; color:${l.ok ? '#10b981' : '#ef4444'};">${l.ok ? (l.p===0?'MANDIRI':'DIBANTU') : 'SALAH'}</span>
+                    ${l.audioUrl ? `<button style="background:#e0e7ff; color:#4f46e5; border:none; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="new Audio('${l.audioUrl}').play()">${ICONS.PLAY}</button>` : '<span style="font-size:0.7rem; color:#94a3b8;">No Audio</span>'}
+                </div>
+            </div>
+        `).join('');
+
         root.innerHTML = `
-            <div class="np-nav"><b style="font-size:1.1rem; color:#1e293b;"> Laporan Profil Klinis</b></div>
+            <div class="np-nav"><b style="font-size:1.1rem; color:#1e293b;">📋 Laporan Profil Klinis</b></div>
             <div class="np-body" style="background:#f8fafc; padding-top:20px;">
                 <div class="card-report" style="max-width:750px; width:100%; margin-bottom:20px;">
                     <div style="display:flex; align-items:center; gap:40px; flex-wrap:wrap;">
@@ -332,11 +418,19 @@ function render() {
                             <div class="m-card"><span>RATA-RATA FLUENCY</span><b style="color:#10b981;">${(logs.reduce((a,b)=>a+b.flu,0)/logs.length/1000).toFixed(2)}s</b></div>
                         </div>
                     </div>
-                    <div style="margin-top:30px; padding-top:20px; border-top:2px solid #f1f5f9; display:flex; gap:15px;">
-                        <button class="btn-p" style="background:#fff; color:#4f46e5; border:2px solid #4f46e5; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="window.np_retry()">
+                    
+                    <div style="margin-top:25px; padding-top:20px; border-top:2px dashed #e2e8f0;">
+                        <b style="font-size:0.85rem; color:#64748b; margin-bottom:10px; display:block;">REVIEW ARTIKULASI (AUDIO LOGS)</b>
+                        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; max-height:200px; overflow-y:auto;">
+                            ${audioListHtml}
+                        </div>
+                    </div>
+
+                    <div style="margin-top:30px; display:flex; gap:15px;">
+                        <button class="btn-p" style="flex:1; background:#fff; color:#4f46e5; border:2px solid #4f46e5; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="window.np_retry()">
                             ${ICONS.RETRY} ULANGI SESI
                         </button>
-                        <button class="btn-p" style="background:#1e293b; color:#fff; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="window.np_exit()">
+                        <button class="btn-p" style="flex:1; background:#1e293b; color:#fff; display:flex; align-items:center; justify-content:center; gap:8px;" onclick="window.np_exit()">
                             ${ICONS.EXIT} KELUAR KE MENU
                         </button>
                     </div>
@@ -358,27 +452,38 @@ export async function renderNamingPractice(containerId) {
             .spotlight-active { background:#0f172a !important; }
             .card-report { background:#fff; padding:30px; border-radius:24px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.05); }
             .np-lbl { display:block; font-size:0.75rem; font-weight:800; color:#64748b; margin:15px 0 8px 0; letter-spacing:0.5px; }
-            .np-sel { width:100%; padding:15px; border:2px solid #e2e8f0; border-radius:12px; font-weight:700; font-size:1rem; outline:none; transition:border 0.2s; background:#f8fafc; }
+            .np-sel { width:100%; padding:15px; border:2px solid #e2e8f0; border-radius:12px; font-weight:700; font-size:1rem; outline:none; transition:border 0.2s; background:#f8fafc; color:#1e293b; }
             .np-sel:focus { border-color:#4f46e5; }
             .btn-p { padding:18px; border:none; border-radius:14px; font-weight:800; font-size:1rem; cursor:pointer; transition:transform 0.1s; }
             .btn-p:active { transform:scale(0.98); }
             
-            /* Verdict Buttons (1-Line Row) */
             .btn-v { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:18px 10px; border:none; border-radius:16px; color:#fff; cursor:pointer; font-weight:800; font-size:0.8rem; letter-spacing:0.5px; transition:transform 0.1s; min-height:85px; }
             .btn-v:active { transform:scale(0.96); }
             .btn-v svg { width:28px; height:28px; }
             
             .play-grid { display:flex; flex-wrap:wrap; gap:25px; justify-content:center; align-items:center; height:100%; width:100%; max-width:900px; }
-            .c-wrap { width:150px; height:210px; perspective:1000px; cursor:pointer; }
-            .c-inner { width:100%; height:100%; position:relative; transition:transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s; transform-style:preserve-3d; }
+            .c-wrap { width:150px; height:210px; perspective:1000px; cursor:pointer; position:relative; }
+            .c-inner { width:100%; height:100%; position:relative; transition:transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s, box-shadow 0.6s; transform-style:preserve-3d; }
             .c-inner.flipped { transform:rotateY(180deg); }
             .c-inner.zoom-focus { transform:rotateY(180deg) scale(1.6); z-index:5000; box-shadow:0 30px 60px rgba(0,0,0,0.6); }
+            .c-inner.zoom-out { transform:rotateY(180deg) scale(1); box-shadow:0 4px 10px rgba(0,0,0,0.1); }
             .c-inner.dim-hidden { opacity:0; filter:blur(15px); pointer-events:none; }
             .c-f, .c-b { position:absolute; inset:0; backface-visibility:hidden; border-radius:16px; border:4px solid #fff; box-shadow:0 4px 10px rgba(0,0,0,0.1); }
             .c-f { background:#4f46e5; color:#fff; display:flex; align-items:center; justify-content:center; font-size:3rem; font-weight:900; }
             .c-b { background:#fff; transform:rotateY(180deg); overflow:hidden; }
             .c-b img { width:100%; height:100%; object-fit:cover; }
             
+            @keyframes pulse-record {
+                0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+                70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+            }
+
+            .btn-record-manual { position:absolute; bottom:-20px; left:50%; transform:translateX(-50%); background:#ef4444; color:white; border:none; padding:12px 25px; border-radius:25px; font-weight:800; display:flex; gap:10px; align-items:center; cursor:pointer; box-shadow:0 10px 20px rgba(239, 68, 68, 0.4); z-index:5001; opacity:0; pointer-events:none; transition:opacity 0.3s, bottom 0.3s, transform 0.2s, background 0.3s; white-space:nowrap; font-size:0.9rem; letter-spacing:1px; }
+            .btn-record-manual.show { opacity:1; pointer-events:auto; bottom:-70px; }
+            .btn-record-manual:active { transform:translateX(-50%) scale(0.95); }
+            .btn-record-manual.recording { background: #dc2626; animation: pulse-record 1.5s infinite; pointer-events: none; }
+
             .db-box { width:50px; height:45px; background:#f1f5f9; border-radius:10px; position:relative; overflow:hidden; border:1px solid #e2e8f0; }
             #vol-bar { position:absolute; bottom:0; width:100%; transition:height 0.1s, background 0.2s; }
             .np-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.85); backdrop-filter:blur(4px); z-index:10000; display:flex; align-items:center; justify-content:center; padding:20px; }
@@ -386,7 +491,8 @@ export async function renderNamingPractice(containerId) {
             .m-card { background:#fff; border:1px solid #e2e8f0; padding:15px; border-radius:14px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 4px rgba(0,0,0,0.02); }
             .m-card span { font-size:0.75rem; font-weight:800; color:#64748b; letter-spacing:0.5px; }
             .m-card b { font-size:1.5rem; color:#1e293b; }
-            .btn-exit-sm { background:#fee2e2; color:#ef4444; border:none; padding:10px 16px; border-radius:10px; font-weight:800; display:flex; align-items:center; gap:6px; cursor:pointer; }
+            .btn-exit-sm { background:#fee2e2; color:#ef4444; border:none; padding:10px 16px; border-radius:10px; font-weight:800; display:flex; align-items:center; gap:6px; cursor:pointer; transition:transform 0.1s; }
+            .btn-exit-sm:active { transform:scale(0.95); }
         `;
         document.head.appendChild(s);
     }
@@ -396,7 +502,27 @@ export async function renderNamingPractice(containerId) {
     window.np_init = initSession;
     window.np_flip = handleCardClick;
     window.np_save = saveResult;
-    window.np_retake = () => { document.querySelectorAll('.np-overlay').forEach(e => e.remove()); startAcousticEngine(); };
+    
+    window.np_start_record = (idx) => {
+        const btn = document.getElementById(`btn-rec-${idx}`);
+        if(btn) { btn.innerHTML = '🔴 MENDENGARKAN...'; btn.classList.add('recording'); }
+        startAcousticEngine();
+    };
+    
+    window.np_retake = () => { 
+        document.querySelectorAll('.np-overlay').forEach(e => e.remove()); 
+        const btn = document.getElementById(`btn-rec-${appState.game.currentIdx}`);
+        if(btn) { btn.innerHTML = '🎙️ MULAI REKAM'; btn.classList.remove('recording'); btn.classList.add('show'); }
+    };
+
+    // V5.4 Audio Playback Function
+    window.np_play_audio = () => {
+        if(appState.game.lastAudioUrl) {
+            const a = new Audio(appState.game.lastAudioUrl);
+            a.play();
+        }
+    };
+    
     window.np_retry = () => { nukeArtifacts(); appState.view = 'SETUP'; render(); };
     window.np_exit = exitToDashboard;
 

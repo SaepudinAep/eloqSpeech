@@ -1,7 +1,6 @@
-// eloq_card_engine.js
-// Clinical Grade Memory Game Engine (Enrichment Version)
-// Features: Latency Tracking, Perseveration Check, Auto-Prompting (SOP), Asset Selector, Pre-Flight & Dashboard
-// ENRICHMENT: Intra-Session Analytics, Gradual Difficulty (2x2 to 5x2), & Global SPA Exit
+// eloq_card_engine.js - V20.1 (FIXED VISUAL ICONS)
+// Standar: Unified Setup, Smart Filtering (Hide Empty Cats), Plain Cards (No '?'), S.O.A.P & DB Integration.
+// Menjaga 100% Logika Klinis Asli (ItemTracker, MatchHistory, Perseveration, SVG Chart)
 
 import { supabase } from '../config.js';
 
@@ -10,28 +9,34 @@ window.eceExitModule = () => {
     if(state.gameTimerInterval) clearInterval(state.gameTimerInterval);
     if(state.promptTimer) clearTimeout(state.promptTimer);
     
-    // Safely unmount and call router exit (Acoustic Engine standard)
     const container = document.querySelector('.ece-root')?.parentElement;
     if(container) container.innerHTML = '';
     if(typeof window.renderApp === 'function') window.renderApp(null);
 };
 
-// --- 1. ENCAPSULATED STYLES (CSS INJECTION) ---
+// --- 1. ENCAPSULATED STYLES ---
 const STYLES = `
-    .ece-root { font-family: 'Inter', sans-serif; text-align: center; padding: 20px; background: #f8fafc; border-radius: 16px; min-height: 500px; position: relative; }
-    .ece-overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(255,255,255,0.98); z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 16px; padding: 20px; }
+    .ece-root { font-family: 'Inter', sans-serif; text-align: center; padding: 20px; background: #f8fafc; border-radius: 16px; min-height: 600px; position: relative; color: #1e293b; }
+    .ece-overlay { position: absolute; inset:0; background: rgba(255,255,255,0.98); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 16px; padding: 20px; overflow-y: auto; }
     
-    .ece-cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; width: 80%; max-width: 800px; margin: 0 auto; }
-    .ece-cat-card { background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .ece-cat-card:hover { transform: translateY(-5px); border-color: #3b82f6; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+    /* Setup Modal Components */
+    .ece-setup-card { background: white; border: 1px solid #cbd5e1; border-radius: 20px; width: 100%; max-width: 500px; padding: 25px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); text-align: left; }
+    .ece-field-group { margin-bottom: 18px; }
+    .ece-label { display: block; font-weight: 800; font-size: 0.85rem; color: #64748b; text-transform: uppercase; margin-bottom: 8px; }
+    .ece-input { width: 100%; padding: 12px; border-radius: 10px; border: 2px solid #e2e8f0; font-family: inherit; font-weight: 600; outline: none; transition: 0.2s; background: white; color: #1e293b; }
+    .ece-input:focus { border-color: #3b82f6; }
     
-    /* Pre-Flight Form */
-    .ece-form-box { background: white; border: 1px solid #cbd5e1; padding: 25px; border-radius: 12px; width: 100%; max-width: 400px; text-align: left; }
-    .ece-form-group { margin-bottom: 15px; }
-    .ece-form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 0.9em; color: #334155; }
-    .ece-select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; font-family: inherit; background: #f8fafc; }
-    .ece-btn { width: 100%; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px; transition: 0.2s; }
-    .ece-btn:hover { background: #2563eb; }
+    /* Multi-Category Selector Box */
+    .ece-cat-scroll { height: 180px; overflow-y: auto; border: 2px solid #e2e8f0; border-radius: 10px; padding: 10px; background: #f8fafc; }
+    .ece-cat-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; border-radius: 6px; transition: 0.2s; }
+    .ece-cat-item:hover { background: #eff6ff; }
+    .ece-cat-item input { width: 18px; height: 18px; cursor: pointer; margin-right: 10px; }
+    .ece-asset-count { font-size: 0.75rem; font-weight: 800; padding: 3px 8px; border-radius: 10px; background: #e2e8f0; color: #475569; }
+    
+    .ece-validation-msg { font-size: 0.8rem; font-weight: 700; color: #ef4444; margin-top: 10px; text-align: center; display: none; padding: 8px; background: #fef2f2; border-radius: 8px; border: 1px solid #fca5a5; }
+    .ece-btn { padding: 15px 25px; border-radius: 12px; border: none; font-weight: 800; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .btn-primary { background: #3b82f6; color: white; width: 100%; margin-top: 10px; }
+    .btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; }
 
     /* Game Grid */
     .ece-game-grid { display: grid; gap: 15px; margin: 20px auto; max-width: 800px; }
@@ -39,27 +44,28 @@ const STYLES = `
     .ece-card-inner { position: relative; width: 100%; height: 100%; text-align: center; transition: transform 0.6s; transform-style: preserve-3d; }
     .ece-card.flipped .ece-card-inner { transform: rotateY(180deg); }
     .ece-card-front, .ece-card-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 2px solid #cbd5e1; }
-    .ece-card-front { background: #3b82f6; color: white; font-size: 2em; transition: 0.3s; }
+    
+    /* V20: Plain Blue Card Front (No '?' Text) */
+    .ece-card-front { background: #3b82f6; box-shadow: inset 0 0 15px rgba(0,0,0,0.1); transition: 0.3s; }
+    
     .ece-card-back { background: white; border: 2px solid #3b82f6; transform: rotateY(180deg); }
     .ece-card-back img { width: 80%; height: 80%; object-fit: contain; }
     
-    /* ENRICHMENT: Visual Hint (Errorless Learning) */
-    .ece-card.seen-hint .ece-card-front { background: #fffbeb !important; border: 3px solid #f59e0b !important; color: #f59e0b !important; }
+    /* Visual Hint (Errorless Learning) */
+    .ece-card.seen-hint .ece-card-front { background: #fcd34d !important; border: 3px solid #f59e0b !important; }
 
     /* Clinical Feedback */
     .ece-shake { animation: shake 0.5s; }
     .ece-glow { box-shadow: 0 0 15px #facc15; border-color: #facc15; }
     @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
 
-    /* ENRICHMENT: Dashboard Charts */
+    /* Dashboard Charts */
     .ece-dash { max-width: 650px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; border: 1px solid #cbd5e1; text-align: left; }
     .ece-chart-row { display: flex; align-items: center; margin-bottom: 15px; }
     .ece-chart-lbl { width: 40%; font-size: 0.85em; font-weight: bold; color: #475569; }
     .ece-chart-bar-bg { flex: 1; height: 12px; background: #e2e8f0; border-radius: 6px; margin: 0 15px; overflow: hidden; }
     .ece-chart-fill { height: 100%; border-radius: 6px; transition: width 1s; }
     .ece-chart-val { width: 15%; font-weight: bold; text-align: right; }
-
-    /* ENRICHMENT: Analytics UI */
     .ece-svg-container { width: 100%; height: 120px; background: #f1f5f9; border-radius: 8px; position: relative; overflow: visible; margin-top: 10px; border: 1px solid #e2e8f0; }
     .ece-dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
     .ece-metric-box { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
@@ -68,11 +74,7 @@ const STYLES = `
 
 // --- 2. GAME STATE (CLINICAL METRICS) ---
 let state = {
-    config: {
-        pairs: 3, // Default Level 2 (3x2)
-        cols: 3,
-        visualHint: false
-    },
+    config: { pairs: 3, cols: 3, visualHint: false, selectedCats: [] },
     
     cards: [],
     flippedIndices: [],
@@ -96,124 +98,146 @@ let state = {
     promptTimer: null,
     idleSeconds: 0,
 
-    // ENRICHMENT: Intra-Session Analytics Tracker
+    // Intra-Session Analytics Tracker
     itemTracker: {}, 
     matchHistory: [], 
     lastMatchClickCount: 0 
 };
 
-// --- 3. MOUNT FUNCTION ---
+// --- 3. MOUNT FUNCTION & SMART SETUP MODAL ---
 export async function renderEloqCardEngine(containerId) {
     if (!document.getElementById('ece-styles')) {
         const s = document.createElement('style'); s.id = 'ece-styles'; s.innerHTML = STYLES; document.head.appendChild(s);
     }
-
     const container = document.getElementById(containerId);
-    container.innerHTML = `<div class="ece-root">⏳ Memuat Logika Klinis...</div>`;
+    container.innerHTML = `<div class="ece-root"><div class="ece-overlay"><h3>⏳ Smart Filtering Database...</h3></div></div>`;
 
-    await showCategorySelector(container);
-}
-
-// --- 4. ASSET SELECTION ---
-async function showCategorySelector(container) {
     try {
+        // 1. Ambil data kategori
         const { data: cats, error: catError } = await supabase.from('es_game_categories').select('*');
         if (catError) throw catError;
-        
-        let html = `
+
+        // 2. Ambil data item yang punya gambar untuk menghitung ketersediaan aset per kategori
+        const { data: assets, error: assetError } = await supabase.from('es_game_items').select('category_id, es_game_assets!inner(public_url)').eq('es_game_assets.media_type', 'IMAGE');
+        if (assetError) throw assetError;
+
+        const assetMap = {};
+        assets.forEach(it => {
+            if (it.es_game_assets && it.es_game_assets.length > 0 && it.es_game_assets[0].public_url) {
+                assetMap[it.category_id] = (assetMap[it.category_id] || 0) + 1;
+            }
+        });
+
+        // 3. Filter kategori kosong agar tidak tampil
+        const validCats = cats.filter(c => (assetMap[c.id] || 0) > 0);
+
+        if (validCats.length === 0) {
+            container.innerHTML = `<div class="ece-root" style="color:red; font-weight:bold;">❌ Tidak ada satupun kategori yang memiliki aset gambar di database.</div>`;
+            return;
+        }
+
+        // 4. Bangun UI Setup Satu Pintu
+        container.innerHTML = `
             <div class="ece-root">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; width:80%; max-width:800px; margin-left:auto; margin-right:auto;">
-                    <h2 style="margin:0;">Pilih Topik Latihan Memori</h2>
-                    <button class="ece-btn" style="width:auto; margin:0; padding:8px 15px; background:#ef4444;" onclick="window.eceExitModule()">✖ Keluar</button>
+                <div class="ece-overlay">
+                    <div class="ece-setup-card">
+                        <h2 style="margin-top:0; border-bottom:2px solid #f1f5f9; padding-bottom:15px; margin-bottom:20px;">Setup Memori Spasial</h2>
+                        
+                        <div class="ece-field-group">
+                            <label class="ece-label">1. Tingkat Kesulitan (Dosis)</label>
+                            <select id="ece-level" class="ece-input" onchange="window.eceValidateSetup()">
+                                <option value="2">Level 1 (Grid 2x2 - Butuh 2 Pasang)</option>
+                                <option value="3" selected>Level 2 (Grid 3x2 - Butuh 3 Pasang)</option>
+                                <option value="4">Level 3 (Grid 4x2 - Butuh 4 Pasang)</option>
+                                <option value="5">Level 4 (Grid 5x2 - Butuh 5 Pasang)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="ece-field-group">
+                            <label class="ece-label">2. Bantuan Jejak Visual (Errorless Learning)</label>
+                            <select id="ece-hint" class="ece-input">
+                                <option value="false" selected>Standar (Tanpa Bantuan)</option>
+                                <option value="true">Aktif (Tandai kartu yang pernah salah)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="ece-field-group">
+                            <label class="ece-label">3. Pilih Topik / Kategori</label>
+                            <p style="font-size:0.75rem; color:#94a3b8; margin-top:0; margin-bottom:10px;">Anda bisa mencentang lebih dari satu kategori untuk menggabungkan aset.</p>
+                            <div class="ece-cat-scroll" id="cat-list-container">
+                                ${validCats.map(c => {
+                                    const count = assetMap[c.id];
+                                    return `
+                                        <label class="ece-cat-item">
+                                            <div style="display:flex; align-items:center;">
+                                                <input type="checkbox" name="ece-cat" value="${c.id}" data-count="${count}" onchange="window.eceValidateSetup()">
+                                                <span style="font-weight:600;">${c.icon_url || '📁'} ${c.name}</span>
+                                            </div>
+                                            <span class="ece-asset-count">${count} Aset</span>
+                                        </label>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                        
+                        <div id="validation-msg" class="ece-validation-msg">⚠️ Total aset dari kategori yang dicentang tidak mencukupi untuk tingkat kesulitan ini.</div>
+                        
+                        <div style="display:flex; gap:10px; margin-top:25px;">
+                            <button class="ece-btn" style="flex:1; background:white; border:1px solid #cbd5e1; color:#64748b;" onclick="window.eceExitModule()">Batal</button>
+                            <button class="ece-btn btn-primary" id="btn-start-game" style="flex:2;" disabled>MULAI TERAPI ❯</button>
+                        </div>
+                    </div>
                 </div>
-                <div class="ece-cat-grid" id="ece-cat-list">Loading...</div>
             </div>
         `;
-        container.innerHTML = html;
-        const list = document.getElementById('ece-cat-list');
-        list.innerHTML = '';
 
-        for (const cat of cats) {
-            const { count, error: countError } = await supabase.from('es_game_items').select('*', { count: 'exact', head: true }).eq('category_id', cat.id);
-            if (countError) throw countError;
+        window.eceValidateSetup = () => {
+            const pairsRequired = parseInt(document.getElementById('ece-level').value);
+            const checkboxes = document.querySelectorAll('input[name="ece-cat"]:checked');
             
-            // ENRICHMENT: Syarat minimum kini turun menjadi 2 aset untuk melayani Grid 2x2
-            if (count >= 2) { 
-                const el = document.createElement('div');
-                el.className = 'ece-cat-card';
-                el.innerHTML = `<div style="font-size:2em; margin-bottom:10px;">${cat.icon_url || '📁'}</div><b>${cat.name}</b><br><small>${count} Aset</small>`;
-                
-                el.onclick = () => showPreFlightForm(container, cat.id, cat.name);
-                list.appendChild(el);
+            let totalAvailable = 0;
+            checkboxes.forEach(cb => totalAvailable += parseInt(cb.dataset.count));
+            
+            const btn = document.getElementById('btn-start-game');
+            const msg = document.getElementById('validation-msg');
+            
+            if (totalAvailable >= pairsRequired && checkboxes.length > 0) {
+                btn.disabled = false; btn.style.cursor = 'pointer'; msg.style.display = 'none';
+            } else {
+                btn.disabled = true; btn.style.cursor = 'not-allowed';
+                msg.style.display = checkboxes.length > 0 ? 'block' : 'none';
             }
-        }
+        };
+
+        document.getElementById('btn-start-game').onclick = () => prepareGame(container);
+
     } catch (err) {
         container.innerHTML = `<div class="ece-root" style="color:red; font-weight:bold;">❌ Gagal Memuat Data: ${err.message}</div>`;
     }
 }
 
-// --- ENRICHMENT 1: PRE-FLIGHT FORM (GRADUAL DIFFICULTY) ---
-function showPreFlightForm(container, categoryId, catName) {
-    container.innerHTML = `
-        <div class="ece-root">
-            <div class="ece-overlay">
-                <h2 style="margin-top:0;">Dosis Terapi: ${catName}</h2>
-                <div class="ece-form-box">
-                    <div class="ece-form-group">
-                        <label>Tingkat Kesulitan (Ukuran Grid)</label>
-                        <select id="ece-level" class="ece-select">
-                            <option value="1">Level 1 (Grid 2x2 - 4 Kartu)</option>
-                            <option value="2" selected>Level 2 (Grid 3x2 - 6 Kartu)</option>
-                            <option value="3">Level 3 (Grid 4x2 - 8 Kartu)</option>
-                            <option value="4">Level 4 (Grid 5x2 - 10 Kartu)</option>
-                        </select>
-                    </div>
-                    <div class="ece-form-group">
-                        <label>Bantuan Jejak Visual (Errorless Learning)</label>
-                        <select id="ece-hint" class="ece-select">
-                            <option value="false" selected>Standar (Tanpa Bantuan)</option>
-                            <option value="true">Aktif (Tandai kartu yang pernah salah)</option>
-                        </select>
-                    </div>
-                    <button class="ece-btn" onclick="window.eceStartEngine('${container.id}', '${categoryId}')">MULAI TERAPI</button>
-                    <button class="ece-btn" style="background:white; color:#64748b; border:1px solid #cbd5e1;" onclick="window.renderEloqCardEngine('${container.id}')">Kembali ke Menu</button>
-                </div>
-            </div>
-        </div>
-    `;
+// --- 4. GAME PREPARATION (Multi-Category Fetch) ---
+async function prepareGame(container) {
+    const btn = document.getElementById('btn-start-game');
+    btn.disabled = true; btn.innerText = "⏳ Memuat Aset...";
 
-    window.eceStartEngine = (cId, catId) => {
-        const lvl = document.getElementById('ece-level').value;
-        // ENRICHMENT INJEKSI: Konfigurasi Grid Bertahap Baru
-        if(lvl === '1') { state.config.pairs = 2; state.config.cols = 2; }
-        else if(lvl === '2') { state.config.pairs = 3; state.config.cols = 3; }
-        else if(lvl === '3') { state.config.pairs = 4; state.config.cols = 4; }
-        else { state.config.pairs = 5; state.config.cols = 5; }
-        
-        state.config.visualHint = document.getElementById('ece-hint').value === 'true';
-        
-        prepareGame(document.getElementById(cId), catId);
-    };
-}
+    const pairsRequired = parseInt(document.getElementById('ece-level').value);
+    const useHint = document.getElementById('ece-hint').value === 'true';
+    const selectedCheckboxes = document.querySelectorAll('input[name="ece-cat"]:checked');
+    const catIds = Array.from(selectedCheckboxes).map(cb => cb.value);
 
-// --- 5. GAME PREPARATION ---
-async function prepareGame(container, categoryId) {
     try {
-        container.innerHTML = `<div class="ece-root">⏳ Menyiapkan Aset...</div>`;
-
-        const { data: items, error } = await supabase.from('es_game_items').select('*, es_game_assets(*)').eq('category_id', categoryId);
+        const { data: items, error } = await supabase.from('es_game_items').select('*, es_game_assets!inner(*)').in('category_id', catIds).eq('es_game_assets.media_type', 'IMAGE');
         if (error) throw error;
 
-        const validItems = items.filter(item => item.es_game_assets && item.es_game_assets.some(a => a.media_type === 'IMAGE' && a.public_url));
-
-        if (validItems.length < state.config.pairs) {
-            alert(`⚠️ Aset gambar tidak cukup. Butuh ${state.config.pairs} gambar unik untuk level ini, hanya ada ${validItems.length}.`);
-            await showCategorySelector(container);
-            return;
-        }
-
-        const selected = validItems.sort(() => 0.5 - Math.random()).slice(0, state.config.pairs);
+        const validItems = items.filter(item => item.es_game_assets && item.es_game_assets.some(a => a.public_url));
+        const selected = validItems.sort(() => 0.5 - Math.random()).slice(0, pairsRequired);
         
+        state.config.pairs = pairsRequired;
+        state.config.cols = (pairsRequired === 2) ? 2 : (pairsRequired === 5) ? 5 : (pairsRequired === 4) ? 4 : 3;
+        state.config.visualHint = useHint;
+        state.config.selectedCats = catIds;
+
         state.itemTracker = {};
         selected.forEach(item => {
             let color = "Tidak Diketahui";
@@ -236,27 +260,30 @@ async function prepareGame(container, categoryId) {
         state.metrics = { clickCount: 0, impulsiveClicks: 0, perseverationErrors: 0, promptLevelMax: 0, latencyTotal: 0 };
         state.lastClickTime = Date.now();
         state.idleSeconds = 0;
-        
         state.matchHistory = [];
         state.lastMatchClickCount = 0;
+        state.flippedIndices = [];
+        state.isLocked = false;
         
         renderGame(container);
         startPromptTimer();
 
     } catch (err) {
-        container.innerHTML = `<div class="ece-root" style="color:red; font-weight:bold;">❌ Gagal Menyiapkan Game: ${err.message}</div>`;
+        alert("Gagal Menyiapkan Game: " + err.message);
+        btn.disabled = false; btn.innerText = "MULAI TERAPI ❯";
     }
 }
 
-// --- 6. RENDER GAME UI ---
+// --- 5. RENDER GAME UI (Plain Cards) ---
 function renderGame(container) {
     let gridHtml = state.cards.map((item, index) => {
         const imgObj = item.es_game_assets.find(a => a.media_type === 'IMAGE');
         const imgUrl = imgObj ? imgObj.public_url : '';
+        // V20: ece-card-front is empty (No '?')
         return `
             <div class="ece-card" id="card-${index}" onclick="window.eceCardClick(${index})">
                 <div class="ece-card-inner">
-                    <div class="ece-card-front">?</div>
+                    <div class="ece-card-front"></div>
                     <div class="ece-card-back"><img src="${imgUrl}"></div>
                 </div>
             </div>
@@ -266,7 +293,7 @@ function renderGame(container) {
     container.innerHTML = `
         <div class="ece-root">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; font-weight:bold; max-width:800px; margin-left:auto; margin-right:auto;">
-                <button class="ece-btn" style="width:auto; margin:0; padding:8px 15px; background:#ef4444;" onclick="window.eceExitModule()">✖ Akhiri Sesi</button>
+                <button class="ece-btn" style="width:auto; margin:0; padding:8px 15px; background:white; border:1px solid #ef4444; color:#ef4444;" onclick="window.eceExitModule()">✖ Akhiri Sesi</button>
                 <span style="color:#475569;">⏱️ <span id="ece-timer">00:00</span></span>
                 <span id="ece-feedback" style="color:#3b82f6;">Skor: <span id="ece-score">0</span> / ${state.totalPairs}</span>
             </div>
@@ -289,7 +316,7 @@ function renderGame(container) {
     }, 1000);
 }
 
-// --- 7. CORE LOGIC ---
+// --- 6. CORE LOGIC ---
 function handleCardClick(index) {
     if (state.isLocked) return;
     if (state.flippedIndices.includes(index)) return;
@@ -362,7 +389,7 @@ function checkForMatch() {
     }
 }
 
-// --- 8. PROMPTING SYSTEM ---
+// --- 7. PROMPTING SYSTEM ---
 function startPromptTimer() {
     clearTimeout(state.promptTimer);
     state.promptTimer = setTimeout(() => {
@@ -390,7 +417,7 @@ function triggerPrompt(level) {
     }
 }
 
-// --- 9. FINISH & DASHBOARD (PURE RAW DATA VISUALIZATION) ---
+// --- 8. FINISH & DASHBOARD (WITH S.O.A.P & DB INTEGRATION) ---
 function finishGame() {
     if(state.gameTimerInterval) clearInterval(state.gameTimerInterval);
     if(state.promptTimer) clearTimeout(state.promptTimer);
@@ -459,7 +486,7 @@ function finishGame() {
 
     const container = document.querySelector('.ece-root').parentElement;
     
-    // RENDER: Dasbor Murni Data Visual
+    // RENDER: Dasbor Data Visual + S.O.A.P Form
     container.innerHTML = `
         <div class="ece-root">
             <h2 style="color:#1e293b; margin-top:0;">Rekam Medis Sesi Klinis</h2>
@@ -510,15 +537,83 @@ function finishGame() {
                 
                 <hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">
                 
-                <div style="display:flex; justify-content:space-between; font-size:0.9em;">
-                    <span>Bantuan Jejak Visual: <b>${state.config.visualHint ? 'AKTIF' : 'NONAKTIF'}</b></span>
-                    <span>Bantuan Prompt Maks: <b>Level ${state.metrics.promptLevelMax}</b></span>
+                <div style="background:#f8fafc; padding:20px; border-radius:12px; border:1px solid #cbd5e1;">
+                    <div style="font-weight:800; color:#1e293b; margin-bottom:15px; text-transform:uppercase; font-size:0.9rem;">Form Observasi Klinis (S.O.A.P)</div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:5px;">Tingkat Bantuan Akhir (Prompt Level):</label>
+                        <select id="ece-final-prompt" class="ece-input" style="padding:10px;">
+                            <option value="0" ${state.metrics.promptLevelMax === 0 ? 'selected' : ''}>Mandiri (0)</option>
+                            <option value="1" ${state.metrics.promptLevelMax === 1 ? 'selected' : ''}>Verbal/Visual Hint (1)</option>
+                            <option value="2" ${state.metrics.promptLevelMax === 2 ? 'selected' : ''}>Fisik Penuh (2)</option>
+                        </select>
+                    </div>
+                    
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; font-size:0.85rem; font-weight:700; color:#475569; margin-bottom:5px;">Catatan Terapis:</label>
+                        <textarea id="ece-clinical-notes" class="ece-input" style="min-height:80px; resize:vertical;" placeholder="Tuliskan respon dan fokus anak..."></textarea>
+                    </div>
+                    
+                    <button class="ece-btn btn-primary" id="btn-save-db">💾 SIMPAN REKAM MEDIS</button>
+                    <button class="ece-btn" style="width:100%; margin-top:10px; background:white; color:#ef4444; border:1px solid #ef4444;" onclick="window.eceExitModule()">✖ KELUAR TANPA SIMPAN</button>
                 </div>
-                
-                <button class="ece-btn" style="margin-top:20px;" onclick="window.eceExitModule()">✖ TUTUP SESI & KELUAR</button>
             </div>
         </div>
     `;
     
-    console.log("Payload Raw Data Klinis:", { metrics: state.metrics, matchHistory: state.matchHistory, itemErrors: itemArray, colorErrors: colorArray });
+    document.getElementById('btn-save-db').onclick = () => saveClinicalDataToDB();
+}
+
+async function saveClinicalDataToDB() {
+    const btn = document.getElementById('btn-save-db');
+    const promptLevel = parseInt(document.getElementById('ece-final-prompt').value);
+    const notes = document.getElementById('ece-clinical-notes').value;
+    
+    btn.innerHTML = "⏳ MENYIMPAN..."; btn.disabled = true;
+
+    try {
+        const rawPatient = localStorage.getItem('eloq_active_patient');
+        if (!rawPatient) throw new Error("Pilih pasien terlebih dahulu di bagian header!");
+        const activePatient = JSON.parse(rawPatient);
+
+        // Fetch UUID Modul
+        const { data: menuData } = await supabase.from('es_menus').select('module_uuid').eq('module_name', 'eloq_card_engine').single();
+        const exerciseId = menuData ? menuData.module_uuid : null;
+
+        // Kalkulasi Akurasi
+        const accuracy = (state.totalPairs / Math.max(state.metrics.clickCount / 2, state.totalPairs)) * 100;
+
+        const payload = {
+            patient_id: activePatient.id,
+            exercise_id: exerciseId,
+            cognitive_latency_ms: Math.round(state.metrics.latencyTotal),
+            prompt_level: promptLevel,
+            is_success: accuracy >= 80,
+            precision_offset_rel: parseFloat(accuracy.toFixed(2)),
+            jitter_index: state.metrics.impulsiveClicks,
+            touch_radius: 0.0,
+            session_metadata: {
+                module_code: "memory_card_engine",
+                config_used: {
+                    grid_size: `${state.config.cols}x2`,
+                    visual_hint_active: state.config.visualHint
+                },
+                categories_used: state.config.selectedCats,
+                total_clicks: state.metrics.clickCount,
+                perseveration_count: state.metrics.perseverationErrors,
+                learning_curve_history: state.matchHistory,
+                therapist_notes: notes
+            }
+        };
+
+        const { error } = await supabase.from('es_game_logs').insert(payload);
+        if (error) throw error;
+
+        alert("✅ Berhasil! Data Sesi Memori Kartu sudah diamankan ke Database.");
+        window.eceExitModule();
+
+    } catch (err) {
+        alert("GAGAL MENYIMPAN: " + err.message);
+        btn.innerHTML = "💾 SIMPAN REKAM MEDIS"; btn.disabled = false;
+    }
 }

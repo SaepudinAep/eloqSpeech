@@ -1,6 +1,7 @@
-/* receptive_module.js - V1.3 CLINICAL REPORTING & MEMORY FIX
+/* receptive_module.js - V1.4 CLINICAL REPORTING & DATABASE FIX
  * Fokus: Opsi C (Radar + Mini-Bar Report), Memory Leak Fix (Reset on Init),
  * Dual Action End-Screen (Retry/Exit), Pastel UX.
+ * Enrichment: S.O.A.P Form & Supabase Integration (es_game_logs).
  * Rule: NO CLEANING, NO SYNTAX COLOR, FULL CODE.
  */
 
@@ -71,6 +72,7 @@ const injectStyles = () => {
         
         .btn-main { padding: 18px; background: var(--p); color: #fff; border: none; border-radius: 14px; font-weight: 900; font-size: 1.1rem; cursor: pointer; transition: 0.2s; display:flex; justify-content:center; align-items:center; gap:10px; }
         .btn-main:active { transform: scale(0.98); }
+        .btn-main:disabled { background: #cbd5e1; cursor: not-allowed; transform: none; }
         .btn-exit { background: #fee2e2; color: var(--d); border: none; padding: 10px 18px; border-radius: 50px; font-weight: 800; cursor: pointer; font-size: 0.9rem; }
         .btn-outline { background: #fff; color: var(--p); border: 2px solid var(--p); padding: 18px; border-radius: 14px; font-weight: 900; font-size: 1.1rem; cursor: pointer; transition: 0.2s; display:flex; justify-content:center; align-items:center; gap:10px; }
 
@@ -303,18 +305,15 @@ function evaluateL2_5(e, idx, isTarget) {
     }
 }
 
-// --- 7. REPORT ENGINE (RADAR + MINI-BAR) ---
+// --- 7. REPORT ENGINE (RADAR + MINI-BAR + S.O.A.P) ---
 function generateRadarSVG(logs, isMotoric) {
-    // Math logic untuk Radar
     const accuracy = isMotoric ? 100 : (logs.filter(l => l.ok).length / logs.length) * 100;
     const avgLat = logs.reduce((a,b)=>a+b.latency, 0) / logs.length;
-    const speed = Math.max(0, 100 - (avgLat / (isMotoric ? 3000 : 5000) * 100)); // Cap speed score
+    const speed = Math.max(0, 100 - (avgLat / (isMotoric ? 3000 : 5000) * 100)); 
     
-    // Konsistensi (Variance waktu)
     const latVar = logs.reduce((a,b)=>a+Math.pow(b.latency - avgLat, 2),0) / logs.length;
     const consistency = Math.max(0, 100 - (Math.sqrt(latVar) / 2000 * 100));
     
-    // Fokus (Makin dikit salah, makin fokus)
     const totalMistakes = isMotoric ? 0 : logs.reduce((a,b)=>a+(b.mistakes||0), 0);
     const focus = Math.max(0, 100 - (totalMistakes * 10));
 
@@ -363,7 +362,6 @@ function renderReport() {
     const avgLat = (logs.reduce((a,b)=>a+b.latency, 0) / logs.length / 1000).toFixed(2);
     const maxLat = Math.max(...logs.map(l=>l.latency));
 
-    // Opsi C: Mini-Bar Chart List
     const detailRows = logs.map((l, i) => {
         const w = (l.latency / maxLat) * 100;
         const barColor = isMotoric ? 'var(--p)' : (l.ok ? 'var(--s)' : 'var(--d)');
@@ -402,13 +400,94 @@ function renderReport() {
                     </div>
                 </div>
                 
-                <div style="margin-top:30px; display:flex; gap:15px; border-top:2px solid #f1f5f9; padding-top:20px;">
-                    <button class="btn-outline" style="flex:1;" onclick="window.rc_retry()">🔄 ULANGI SESI INI</button>
-                    <button class="btn-main" style="flex:1; background:#1e293b;" onclick="window.rc_exit()">✖ SELESAI & KELUAR</button>
+                <div style="margin-top:30px; border-top:2px solid #f1f5f9; padding-top:20px;">
+                    <div style="font-weight:900; font-size:1rem; color:var(--text); margin-bottom:15px; text-transform:uppercase;">FORM OBSERVASI (S.O.A.P)</div>
+                    <div class="inp-grp">
+                        <label class="inp-lbl">Tingkat Bantuan Akhir:</label>
+                        <select id="rc-final-prompt" class="inp-sel" style="padding:10px;">
+                            <option value="0">Mandiri (0)</option>
+                            <option value="1">Verbal/Visual Hint (1)</option>
+                            <option value="2">Fisik Penuh (2)</option>
+                        </select>
+                    </div>
+                    <div class="inp-grp">
+                        <label class="inp-lbl">Catatan Terapis:</label>
+                        <textarea id="rc-clinical-notes" class="inp-sel" style="min-height:80px; resize:vertical; padding:10px;" placeholder="Tuliskan respon pasien..."></textarea>
+                    </div>
                 </div>
+                
+                <div style="margin-top:20px; display:flex; gap:15px;">
+                    <button class="btn-outline" style="flex:1;" onclick="window.rc_retry()">🔄 ULANGI SESI</button>
+                    <button class="btn-main" id="btn-save-db" style="flex:2;">💾 SIMPAN KE DATABASE</button>
+                </div>
+                <button class="btn-exit" style="width:100%; margin-top:15px;" onclick="window.rc_exit()">✖ Keluar Tanpa Simpan</button>
             </div>
         </div>
     `;
+}
+
+// --- V1.4 DATABASE INTEGRATION ---
+async function saveReceptiveData() {
+    const btn = document.getElementById('btn-save-db');
+    const promptLvl = parseInt(document.getElementById('rc-final-prompt').value);
+    const notes = document.getElementById('rc-clinical-notes').value;
+
+    btn.innerHTML = "⏳ MENYIMPAN..."; btn.disabled = true;
+
+    try {
+        const rawPatient = localStorage.getItem('eloq_active_patient');
+        if (!rawPatient) throw new Error("Pilih pasien terlebih dahulu di dashboard utama!");
+        const activePatient = JSON.parse(rawPatient);
+
+        // Cari UUID dari tabel es_menus
+        const { data: menuData } = await supabase.from('es_menus').select('module_uuid').eq('module_name', 'receptive_module').single();
+        const exerciseId = menuData ? menuData.module_uuid : null;
+
+        const logs = appState.game.sessionLogs;
+        const isMotoric = appState.config.level === 1;
+        
+        let totalErrors = 0;
+        let totalLatency = 0;
+        let correctAnswers = 0;
+
+        logs.forEach(l => {
+            if (!isMotoric) totalErrors += (l.mistakes || 0);
+            totalLatency += l.latency;
+            if (l.ok) correctAnswers++;
+        });
+
+        const avgLatency = Math.round(totalLatency / logs.length);
+        const accuracy = isMotoric ? 100 : Math.round((correctAnswers / logs.length) * 100);
+
+        const payload = {
+            patient_id: activePatient.id,
+            exercise_id: exerciseId,
+            cognitive_latency_ms: avgLatency,
+            prompt_level: promptLvl,
+            is_success: accuracy >= 80,
+            precision_offset_rel: parseFloat(accuracy.toFixed(2)),
+            jitter_index: totalErrors,
+            touch_radius: 0.0,
+            session_metadata: {
+                module_code: "receptive_engine",
+                config_used: appState.config,
+                total_mistakes: totalErrors,
+                average_latency_ms: avgLatency,
+                therapist_notes: notes,
+                round_logs: logs
+            }
+        };
+
+        const { error } = await supabase.from('es_game_logs').insert(payload);
+        if (error) throw error;
+
+        alert("✅ Berhasil! Data Sesi Reseptif sudah diamankan ke Database.");
+        exitToDashboard();
+
+    } catch (err) {
+        alert("GAGAL MENYIMPAN: " + err.message);
+        btn.innerHTML = "💾 SIMPAN KE DATABASE"; btn.disabled = false;
+    }
 }
 
 // --- 8. VIEW ROUTER ---
@@ -452,6 +531,8 @@ function renderRouter() {
         if(isMotoric) runLevel1(); else runLevel2_5();
     } else {
         root.innerHTML = `<div class="rc-app">${renderReport()}</div>`;
+        const btnSave = document.getElementById('btn-save-db');
+        if (btnSave) btnSave.onclick = saveReceptiveData;
     }
 }
 
@@ -464,13 +545,13 @@ export async function renderReceptiveModule(containerId) {
     if(!appState.container) return;
     
     injectStyles();
-    appState.container.innerHTML = `<div id="rc-app-root" class="rc-app"><div style="margin:auto; font-weight:900; color:#4f46e5; font-size:1.2rem;">Memuat Mesin Reseptif V1.3...</div></div>`;
+    appState.container.innerHTML = `<div id="rc-app-root" class="rc-app"><div style="margin:auto; font-weight:900; color:#4f46e5; font-size:1.2rem;">Memuat Mesin Reseptif V1.4...</div></div>`;
 
     window.rc_smartSetup = updateSmartSetup;
     window.rc_checkAudio = () => updateSmartSetup(true);
     window.rc_start = startSession;
     window.rc_exit = exitToDashboard;
-    window.rc_retry = () => { resetMemory(); renderRouter(); }; // New Retry Function
+    window.rc_retry = () => { resetMemory(); renderRouter(); };
     window.rc_hitL1 = handleHitL1;
     window.rc_eval = evaluateL2_5;
     window.rc_playAud = (url) => playSound(null, url);

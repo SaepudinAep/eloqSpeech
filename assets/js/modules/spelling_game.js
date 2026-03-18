@@ -1,4 +1,8 @@
-// spelling_game.js - V11.1 (LEVEL 1 SHUFFLE ADDED)
+// spelling_game.js - V11.2 (Standardized Clinical Edition)
+// Features: LEVEL 1 SHUFFLE ADDED, Ghost Drag Engine.
+// Enrichment: Post-Flight S.O.A.P & Database Integration (es_game_logs).
+// Pattern: Strict Standard Architecture (No Core Logic Cleaning).
+
 import { supabase } from '../config.js';
 
 let state = {
@@ -23,18 +27,14 @@ const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const PALETTE = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 // --- 0. GLOBAL SPA EXIT FUNCTION ---
-// Standar pembersihan modul sesuai eloq_card_engine.js
 window.splExitModule = () => {
-    // Tutup modal jika masih terbuka
     const modal = document.getElementById('spl-modal');
     if (modal) modal.remove();
     
-    // Hapus seluruh elemen di container (Unmount)
     if (state.container) {
         state.container.innerHTML = '';
     }
     
-    // Reset memori state ke nilai awal
     state = {
         container: null,
         targetWord: '',
@@ -48,9 +48,12 @@ window.splExitModule = () => {
         isWon: false
     };
     
-    // Panggil router utama untuk kembali ke dashboard
     if (typeof window.renderApp === 'function') {
         window.renderApp(null);
+    } else if (typeof window.loadModule === 'function') {
+        window.loadModule('digital_area');
+    } else {
+        window.location.reload();
     }
 };
 
@@ -298,6 +301,7 @@ const injectStyles = () => {
             margin-bottom: 15px; 
             transition: 0.2s; 
             color: #0f172a; 
+            font-family: inherit;
         }
         
         .inp-text:focus { 
@@ -319,11 +323,14 @@ const injectStyles = () => {
             text-transform: uppercase; 
             letter-spacing: 1px; 
             flex: 1; 
+            transition: 0.2s;
         }
+        .btn-modal:disabled { background: #cbd5e1; cursor: not-allowed; }
         
         .btn-red { 
-            background: var(--d); 
-            color: #fff; 
+            background: white; 
+            color: var(--d); 
+            border: 2px solid #fecaca;
         }
         
         .btn-primary { 
@@ -440,7 +447,6 @@ export async function renderSpellingGame(containerId) {
     if (!state.container) return;
     injectStyles();
     
-    // Bind global functions
     window.splOpenSetup = showSetupModal;
     window.splSubmit = submitSetup;
     window.splCloseModal = () => { 
@@ -454,7 +460,6 @@ export async function renderSpellingGame(containerId) {
         showSetupModal(); 
     };
 
-    // Handler Pointer Events
     window.splPointerDown = handlePointerDown;
     window.splPointerMove = handlePointerMove;
     window.splPointerUp = handlePointerUp;
@@ -515,7 +520,7 @@ function showSetupModal() {
                 </label>
             </div>
             <div class="modal-footer">
-                <button class="btn-modal btn-red" onclick="window.splExitModule()">BATAL DAN KELUAR</button>
+                <button class="btn-modal btn-red" onclick="window.splExitModule()">BATAL & KELUAR</button>
                 <button class="btn-modal btn-primary" onclick="window.splSubmit()">MULAI SESI</button>
             </div>
         </div>
@@ -532,7 +537,6 @@ function submitSetup() {
         return alert("Pastikan input hanya berisi huruf alfabet dan spasi.");
     }
     
-    // Log sesi lama sebelum ganti kata baru
     if (state.targetWord && !state.isWon) logSession(); 
     
     state.targetWord = val;
@@ -542,30 +546,24 @@ function submitSetup() {
     state.startTime = Date.now();
     state.isWon = false;
     
-    // Struktur Slot (Mendukung Spasi)
     state.slots = val.split('').map((char, idx) => ({ 
         idx: idx, 
         char: char, 
         isSpace: char === ' ' 
     }));
     
-    // Buat kepingan huruf (Pool)
     let charsForPool = val.replace(/\s/g, '').split('');
     let distCount = state.level === 2 ? 3 : (state.level === 3 ? 6 : 0);
     
-    // Jika ada level pengecoh, tambahkan huruf acak
     for(let i=0; i<distCount; i++) {
         charsForPool.push(ALPHABET[Math.floor(Math.random() * 26)]);
     }
     
-    // PENGACAKAN: Shuffle array charsForPool menggunakan algoritma Fisher-Yates
-    // Ini memastikan huruf di Level 1 (maupun level lainnya) benar-benar teracak sebelum dimasukkan ke items
     for (let i = charsForPool.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [charsForPool[i], charsForPool[j]] = [charsForPool[j], charsForPool[i]];
     }
     
-    // Inisialisasi Item dengan Warna Acak
     state.items = charsForPool.map((char, i) => {
         const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
         return { 
@@ -576,7 +574,6 @@ function submitSetup() {
         };
     });
     
-    // Acak ulang urutan di keranjang untuk keamanan ganda
     state.items.sort(() => Math.random() - 0.5);
     
     window.splCloseModal();
@@ -644,7 +641,6 @@ function handlePointerDown(e, id) {
     const el = document.getElementById(id);
     if(!el) return;
 
-    // Buat elemen bayangan (Ghost)
     dragState.ghost = el.cloneNode(true);
     dragState.ghost.style.position = 'fixed';
     dragState.ghost.style.zIndex = '9999';
@@ -684,7 +680,6 @@ function handlePointerUp(e) {
     dragState.ghost.remove();
     dragState.ghost = null;
 
-    // Deteksi Drop Zone
     const dropTarget = document.elementFromPoint(e.clientX, e.clientY);
     const slotEl = dropTarget ? dropTarget.closest('.slot-box') : null;
 
@@ -705,18 +700,16 @@ function processDropToSlot(id, targetIdx) {
     
     if(!itm || !targetSlot || targetSlot.isSpace) return;
 
-    // Bersihkan penghuni lama jika ada
     const existing = state.items.find(i => i.pos === targetIdx);
     if (existing) {
         existing.pos = 'pool'; 
     }
     
-    // Validasi penempatan
     if (itm.char !== targetSlot.char) {
         state.errors++;
-        itm.pos = 'pool'; // Tendang balik ke keranjang jika salah
+        itm.pos = 'pool'; 
     } else {
-        itm.pos = targetIdx; // Kunci jika benar
+        itm.pos = targetIdx; 
     }
 
     renderBoard();
@@ -740,7 +733,6 @@ function retryCurrent() {
 }
 
 function checkWinCondition() {
-    // Cek semua slot huruf (abaikan spasi)
     const letterSlots = state.slots.filter(s => !s.isSpace);
     const isWin = letterSlots.every(s => {
         const i = state.items.find(itm => itm.pos === s.idx);
@@ -779,7 +771,6 @@ function logSession() {
 }
 
 function showAssessment() {
-    // Log sesi aktif jika diakhiri paksa sebelum menang
     if (state.targetWord && !state.isWon) logSession(); 
     
     if (state.sessionLogs.length === 0) {
@@ -788,7 +779,6 @@ function showAssessment() {
     
     window.splCloseModal();
 
-    // Kalkulasi Skala Grafik
     let maxErr = Math.max(...state.sessionLogs.map(l => l.salah), 5); 
     let maxTime = Math.max(...state.sessionLogs.map(l => l.waktu), 30); 
 
@@ -831,11 +821,95 @@ function showAssessment() {
                     <div class="chart-title">WAKTU SELESAI (BIRU)</div>
                     ${timeCharts}
                 </div>
+                
+                <hr style="border:none; border-top:2px dashed #e2e8f0; margin:30px 0 20px 0;">
+                <div style="background:#f8fafc; padding:20px; border-radius:12px; border:1px solid #cbd5e1; text-align:left;">
+                    <div style="font-weight:800; color:#1e293b; margin-bottom:15px; text-transform:uppercase; font-size:0.9rem;">Form Observasi Klinis (S.O.A.P)</div>
+                    
+                    <label class="inp-label">Tingkat Bantuan Akhir (Prompt Level):</label>
+                    <select id="spl-final-prompt" class="inp-text" style="font-size:1rem; text-align-last:center; padding:12px;">
+                        <option value="0">Mandiri (0)</option>
+                        <option value="1">Verbal/Visual Hint (1)</option>
+                        <option value="2">Fisik Penuh (2)</option>
+                    </select>
+                    
+                    <label class="inp-label" style="margin-top:15px;">Catatan Terapis:</label>
+                    <textarea id="spl-clinical-notes" class="inp-text" style="min-height:80px; resize:vertical; font-size:1rem; text-transform:none; text-align:left; padding:12px;" placeholder="Tuliskan respon dan fokus pasien..."></textarea>
+                </div>
+
             </div>
             <div class="modal-footer">
-                <button class="btn-modal btn-red" onclick="window.splExitModule()">TUTUP DAN KELUAR MODUL</button>
+                <button class="btn-modal btn-red" onclick="window.splExitModule()">✖ KELUAR TANPA SIMPAN</button>
+                <button class="btn-modal btn-primary" id="btn-save-spl">💾 SIMPAN REKAM MEDIS</button>
             </div>
         </div>
     `;
     document.body.appendChild(d);
+    
+    // Bind Database Save Action
+    document.getElementById('btn-save-spl').onclick = saveSpellingDataToDB;
+}
+
+async function saveSpellingDataToDB() {
+    const btn = document.getElementById('btn-save-spl');
+    const promptLevel = parseInt(document.getElementById('spl-final-prompt').value);
+    const notes = document.getElementById('spl-clinical-notes').value;
+
+    btn.innerHTML = "⏳ MENYIMPAN..."; btn.disabled = true;
+
+    try {
+        const rawPatient = localStorage.getItem('eloq_active_patient');
+        if (!rawPatient) throw new Error("Pilih pasien terlebih dahulu di bagian header aplikasi!");
+        const activePatient = JSON.parse(rawPatient);
+
+        // Cari UUID dari tabel es_menus (Asumsi nama modul: spelling_game)
+        const { data: menuData } = await supabase.from('es_menus').select('module_uuid').eq('module_name', 'spelling_game').single();
+        const exerciseId = menuData ? menuData.module_uuid : null;
+
+        // Kalkulasi Metrik Agregat
+        const totalWords = state.sessionLogs.length;
+        let totalErrors = 0;
+        let totalTimeMs = 0;
+        let totalLetters = 0;
+
+        state.sessionLogs.forEach(log => {
+            totalErrors += log.salah;
+            totalTimeMs += (log.waktu * 1000);
+            totalLetters += log.kata.replace(/\s/g, '').length;
+        });
+
+        // Precision: Semakin sedikit salah tarik berbanding panjang kata, semakin presisi.
+        let precision = totalLetters > 0 ? ((totalLetters - totalErrors) / totalLetters) * 100 : 0;
+        precision = Math.max(0, precision); // Cegah nilai minus jika error terlalu banyak
+
+        const payload = {
+            patient_id: activePatient.id,
+            exercise_id: exerciseId,
+            cognitive_latency_ms: Math.round(totalTimeMs / totalWords), // Rata-rata waktu penyelesaian per kata
+            prompt_level: promptLevel,
+            is_success: precision >= 80,
+            precision_offset_rel: parseFloat(precision.toFixed(2)),
+            jitter_index: totalErrors, // Kesalahan peletakan diukur sebagai Jitter
+            touch_radius: 0.0,
+            session_metadata: {
+                module_code: "spelling_engine",
+                total_words_completed: totalWords,
+                total_errors: totalErrors,
+                config_level: state.level,
+                config_hint_active: state.showHint,
+                word_logs: state.sessionLogs,
+                therapist_notes: notes
+            }
+        };
+
+        const { error } = await supabase.from('es_game_logs').insert(payload);
+        if (error) throw error;
+
+        alert("✅ Berhasil! Data Sesi Spelling sudah diamankan ke Database.");
+        window.splExitModule();
+
+    } catch (err) {
+        alert("GAGAL MENYIMPAN: " + err.message);
+        btn.innerHTML = "💾 SIMPAN REKAM MEDIS"; btn.disabled = false;
+    }
 }
