@@ -595,7 +595,7 @@ async function saveVMDataToDB() {
         const activePatient = JSON.parse(rawPatient);
 
         // Fetch UUID Modul Visual Matching
-        const { data: menuData } = await supabase.from('es_menus').select('module_uuid').eq('module_name', 'visual_matching_engine').single();
+        const { data: menuData } = await supabase.from('es_menus').select('module_uuid').eq('module_name', 'visual_matching').single();
         const exerciseId = menuData ? menuData.module_uuid : null;
 
         const logs = appState.game.sessionLogs;
@@ -615,7 +615,7 @@ async function saveVMDataToDB() {
             jitter_index: totalMistakes,
             touch_radius: 0.0,
             session_metadata: {
-                module_code: "visual_matching_engine",
+                module_code: "visual_matching",
                 config_used: appState.config,
                 total_drag_errors: totalMistakes,
                 therapist_notes: notes,
