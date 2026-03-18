@@ -1,125 +1,148 @@
+/**
+ * [ PRO-CLEAN ] ELOQ CORE MAIN.JS V3
+ * Optimized: Shell Rendering, State Management, & Patient Session Enforcement
+ */
 import { supabase } from './config.js';
 import * as UI from './modules/ui.js';
 
-const APP_CONTEXT = 'admin'; 
-let userProfile = null;
-let allMenus = [];
+// --- 1. GLOBAL STATE (Single Source of Truth) ---
+const State = {
+    context: 'admin',
+    user: null,
+    menus: [],
+    activePatient: null,
+    isShellRendered: false
+};
 
-window.renderApp = renderApp;
-
+// --- 2. INITIALIZATION ---
 async function init() {
     UI.injectStyles();
     try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (APP_CONTEXT === 'admin' && !session) return window.location.assign('index.html');
+        if (!session) return window.location.assign('index.html');
 
-        if (session) {
-            // Mengambil profil lengkap termasuk status is_contributor
-            const { data: profile } = await supabase.from('es_profiles')
-                .select('*, es_roles(role_name)')
-                .eq('id', session.user.id).single();
-            userProfile = profile;
-        }
+        // Fetch Profile & Menus secara Paralel (Lebih Cepat)
+        const [profileRes, menuRes] = await Promise.all([
+            supabase.from('es_profiles').select('*, es_roles(role_name)').eq('id', session.user.id).single(),
+            supabase.from('es_menus').select('*, es_menu_roles!inner(role_id)').eq('app_context', State.context).eq('is_active', true).order('sort_order')
+        ]);
 
-        /**
-         * TETAP PATUH PADA ATURAN:
-         * Menggunakan !inner join agar database hanya menarik menu yang sudah memiliki Role.
-         * Menu yang belum dikonfigurasi hak aksesnya tidak akan ditarik (Grendel Database).
-         */
-        const { data: menus } = await supabase.from('es_menus')
-            .select('*, es_menu_roles!inner(role_id)') 
-            .eq('app_context', APP_CONTEXT)
-            .eq('is_active', true)
-            .order('sort_order');
+        State.user = profileRes.data;
         
-        const fetchedMenus = menus || [];
-
-        /**
-         * ENRICHMENT: Logika Pengecualian Kontributor.
-         * Filter ini berjalan setelah database memastikan menu tersebut memiliki hak akses.
-         */
-        allMenus = fetchedMenus.filter(m => {
-            // 1. JALUR KHUSUS: Jika user adalah KONTRIBUTOR, berikan akses penuh ke menu yang ditarik.
-            if (userProfile?.is_contributor === true) return true;
-            
-            // 2. STANDAR RBAC: Jika bukan kontributor, cek kecocokan role_id secara spesifik.
-            return m.es_menu_roles.some(r => r.role_id === userProfile?.role_id);
+        // RBAC Filtering
+        State.menus = (menuRes.data || []).filter(m => {
+            if (State.user?.is_contributor) return true;
+            return m.es_menu_roles.some(r => r.role_id === State.user?.role_id);
         });
 
-        document.getElementById('loading-screen').style.display = 'none';
-        renderApp(null); 
-    } catch (e) { console.error(e); }
-}
+        // Load Active Patient Session
+        const savedPatient = localStorage.getItem('eloq_active_patient');
+        if (savedPatient) State.activePatient = JSON.parse(savedPatient);
 
-// --- FUNGSI PENCARI JALUR (Breadcrumb Logic) - TETAP ASLI ---
-function getCrumbs(currentId) {
-    const path = [];
-    let tempId = currentId;
-    while (tempId) {
-        const item = allMenus.find(m => m.id === tempId);
-        if (item) {
-            path.unshift({ id: item.id, label: item.label });
-            tempId = item.parent_id;
-        } else break;
+        document.getElementById('loading-screen')?.remove();
+        
+        // Jalankan aplikasi
+        renderApp(null);
+
+    } catch (err) {
+        console.error("System Failure:", err);
     }
-    if (currentId !== null) path.unshift({ id: null, label: 'DASHBOARD' });
-    return path;
 }
 
-// --- FUNGSI RENDER DASHBOARD - TETAP ASLI ---
+// --- 3. CORE RENDERING (THE ORCHESTRATOR) ---
 function renderApp(targetId = null) {
-    const app = document.getElementById('dashboard-content');
-    const targetItem = allMenus.find(m => m.id === targetId);
+    const container = document.getElementById('dashboard-content');
     const crumbs = getCrumbs(targetId);
 
-    app.innerHTML = `
-        <div class="main-wrapper">
-            ${UI.renderHeader(crumbs, userProfile)}
-            <div id="dynamic-area"></div>
-        </div>
-    `;
+    // A. RENDER SHELL (Hanya 1x Seumur Hidup Sesi)
+    if (!State.isShellRendered) {
+        container.innerHTML = `
+            <div class="main-wrapper">
+                <header id="header-region"></header>
+                <main id="dynamic-area" style="min-height: 80vh;"></main>
+            </div>
+        `;
+        setupGlobalEvents();
+        State.isShellRendered = true;
+    }
 
-    document.getElementById('btn-logout').onclick = async () => {
-        if(confirm("Logout?")) { await supabase.auth.signOut(); window.location.reload(); }
-    };
+    // B. UPDATE HEADER (Update Breadcrumb & Patient Pill saja)
+    document.getElementById('header-region').innerHTML = UI.renderHeader(crumbs, State.user);
 
+    // C. ROUTING LOGIC
     const area = document.getElementById('dynamic-area');
+    const target = State.menus.find(m => m.id === targetId);
 
-    if (targetItem && targetItem.module_name) {
-        loadModule(targetItem.module_name, targetItem.label);
+    if (target?.module_name) {
+        loadModule(target.module_name, target.label);
     } else {
-        area.innerHTML = `<div class="menu-grid" id="menu-grid-root"></div>`;
-        const grid = document.getElementById('menu-grid-root');
-        
-        const subMenus = allMenus.filter(m => m.parent_id === targetId);
-        subMenus.forEach(item => {
-            const card = document.createElement('div');
-            card.className = 'menu-card';
-            card.innerHTML = `
-                <div class="card-icon">${item.icon || '📁'}</div>
-                <div style="font-weight:800; font-size:14px;">${item.label}</div>
-                <div style="font-size:10px; color:#4d97ff; margin-top:8px; font-weight:800;">
-                    ${item.module_name ? 'APLIKASI' : 'FOLDER'}
-                </div>
-            `;
-            card.onclick = () => renderApp(item.id); 
-            grid.appendChild(card);
-        });
+        renderGrid(targetId, area);
     }
 }
 
-// --- FUNGSI LOAD MODUL - TETAP ASLI ---
+// --- 4. SUB-RENDERERS ---
+function renderGrid(parentId, container) {
+    const items = State.menus.filter(m => m.parent_id === parentId);
+    container.innerHTML = `<div class="menu-grid"></div>`;
+    const grid = container.querySelector('.menu-grid');
+
+    grid.innerHTML = items.map(item => `
+        <div class="menu-card" onclick="renderApp(${item.id})">
+            <div class="card-icon">${item.icon || '📁'}</div>
+            <div style="font-weight:800; font-size:14px; color:#1e293b;">${item.label}</div>
+            <div style="font-size:10px; color:#4d97ff; margin-top:8px; font-weight:800;">
+                ${item.module_name ? 'APLIKASI' : 'FOLDER'}
+            </div>
+        </div>
+    `).join('');
+}
+
 async function loadModule(name, label) {
     const area = document.getElementById('dynamic-area');
-    area.innerHTML = `<div style="text-align:center; padding:50px; color:#4d97ff;">⏳ Memuat ${label}...</div>`;
+    area.innerHTML = `<div style="text-align:center; padding:100px; color:#4d97ff; font-weight:800;">⏳ LOADING ${label.toUpperCase()}...</div>`;
+    
     try {
         const mod = await import(`./modules/${name}.js`);
         const funcName = 'render' + name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+        
         if (mod[funcName]) {
             area.innerHTML = `<div id="mod-root"></div>`;
-            mod[funcName]('mod-root');
+            // INJEKSI: Kirim State Pasien Aktif ke Modul
+            mod[funcName]('mod-root', State.activePatient);
+        } else {
+            throw new Error(`Module entry point [${funcName}] not found.`);
         }
-    } catch (err) { console.error(err); }
+    } catch (err) {
+        area.innerHTML = `<div style="padding:40px; color:red;">❌ Error loading ${name}: ${err.message}</div>`;
+    }
 }
+
+// --- 5. HELPERS ---
+function getCrumbs(currentId) {
+    const path = [];
+    let tid = currentId;
+    while (tid) {
+        const m = State.menus.find(i => i.id === tid);
+        if (m) { path.unshift({ id: m.id, label: m.label, icon: m.icon }); tid = m.parent_id; }
+        else break;
+    }
+    return path;
+}
+
+function setupGlobalEvents() {
+    // Event delegation untuk Logout (Hanya dipasang 1x di body)
+    document.body.addEventListener('click', async (e) => {
+        if (e.target.closest('#btn-logout')) {
+            if (confirm("Logout dan Akhiri Sesi?")) {
+                localStorage.removeItem('eloq_active_patient');
+                await supabase.auth.signOut();
+                window.location.reload();
+            }
+        }
+    });
+}
+
+// Panggil Global Accessor
+window.renderApp = renderApp;
 
 init();
